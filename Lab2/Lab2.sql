@@ -1,5 +1,3 @@
-
-
 DROP TABLE Groups;
 CREATE TABLE Groups 
 (
@@ -7,6 +5,8 @@ CREATE TABLE Groups
     name VARCHAR2(200) NOT NULL,
     c_val NUMBER DEFAULT 0
 );
+insert into Groups(name) values('yes');
+select * from Groups;
 
 DROP TABLE Students;
 CREATE TABLE Students 
@@ -18,14 +18,24 @@ CREATE TABLE Students
         FOREIGN KEY (group_id)
         REFERENCES Groups(id)
 );
+insert into students(name, group_id) values('Mario', 1);
+insert into students(name, group_id) values('sONIC', 1);
+SELECT * FROM students;
+DELETE FROM students WHERE students.NAME = 'sONIC';
 
+DROP TRIGGER num_students_update;
 
 CREATE OR REPLACE TRIGGER num_students_update
 AFTER DELETE OR INSERT
-ON Students
+ON Students 
 FOR EACH ROW
 BEGIN
-    UPDATE Groups 
-    SET c_val = (SELECT COUNT(*) FROM Students WHERE group_id = OLD.id)
-    WHERE id = OLD.id;
+    CASE
+        WHEN INSERTING THEN 
+            UPDATE Groups SET groups.c_val = groups.c_val + 1 
+            WHERE groups.id = :NEW.group_id;
+        WHEN DELETING THEN
+            UPDATE Groups SET groups.c_val = groups.c_val - 1
+            WHERE groups.id = :OLD.group_id;
+        END CASE;
 END num_students_update;

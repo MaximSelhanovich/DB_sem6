@@ -1,6 +1,6 @@
 DROP TABLE MyTable;
 
-select * from dba_users;
+select * from MyTable;
 
 CREATE TABLE MyTable 
 (
@@ -17,6 +17,33 @@ END;
 
 
 SELECT * FROM MyTable WHERE ID=4;
+
+CREATE OR REPLACE FUNCTION even_more
+    RETURN varchar2
+    IS
+
+    response varchar2(10);
+    even_cnt     number;
+    not_even_cnt number;
+
+BEGIN
+    SELECT COUNT(*)
+    INTO even_cnt
+    FROM (SELECT val FROM MyTable where MOD(val, 2) = 0);
+
+    not_even_cnt := 10 - even_cnt;
+
+    IF even_cnt > not_even_cnt THEN
+        response := 'TRUE';
+    ELSIF even_cnt < not_even_cnt THEN
+        response := 'FALSE';
+    ELSE
+        response := 'EQUAL';
+    end if;
+
+    return response;
+end;
+
 
 DROP FUNCTION even_odd_check;
 CREATE OR REPLACE FUNCTION even_odd_check RETURN VARCHAR2 IS
@@ -41,9 +68,10 @@ BEGIN
     END IF;
 END even_odd_check;
 
-BEGIN
-   DBMS_OUTPUT.put_line(even_odd_check());
+BEGIN 
+   DBMS_OUTPUT.put_line(even_more());
 END;
+
 
 DROP PROCEDURE task_4;
 CREATE OR REPLACE PROCEDURE task_4 IS
