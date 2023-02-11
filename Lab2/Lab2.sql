@@ -34,27 +34,18 @@ ON Students
 FOR EACH ROW
 DECLARE
     PRAGMA AUTONOMOUS_TRANSACTION;
-    n number;
 BEGIN
     CASE
         WHEN INSERTING THEN
-            dbms_output.put_line('Befor update: (' || :NEW.group_id || ')');
-            SELECT c_val INTO n FROM groups WHERE groups.id = :NEW.group_id;
-            dbms_output.put_line('Check existanxe: (' || n || ')');
             UPDATE Groups SET groups.c_val = groups.c_val + 1 
             WHERE groups.id = :NEW.group_id;
-            --COMMIT;
-            dbms_output.put_line('After update groups: (' || :NEW.group_id || ')');
-            --COMMIT;
         WHEN DELETING THEN
             UPDATE Groups SET groups.c_val = groups.c_val - 1
             WHERE groups.id = :OLD.group_id;
-            dbms_output.put_line('MINUS ONE: (' || :OLD.group_id ||')');
-            --COMMIT;
         END CASE;
     COMMIT;
-exception
-    when no_data_found then
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
         dbms_output.put_line(SQLERRM);
 END num_students_update; /
 BEGIN
@@ -64,7 +55,8 @@ END; /
 insert into Groups(name) values('yes'); /
 insert into Groups(name) values('NO'); /
 insert into Groups(name) values('Maybe'); /
-commit;
+insert into groups(id, name) values(6, 'Nein'); /
+commit; /
 select * from Groups;
 
 insert into students(name, group_id) values('Mario', 2); /
@@ -78,3 +70,22 @@ DELETE FROM students WHERE students.NAME = 'sONIC';
 
 DELETE FROM groups WHERE NAME = 'NO'; /
 SELECT * FROM STUDENTS;
+
+
+CREATE OR REPLACE TRIGGER group_name_check
+BEFORE 
+    INSERT OR 
+    UPDATE OF name
+ON Groups
+FOR EACH ROW
+DECLARE
+    unique_check NUMBER;
+    NOT_UNIQUE_GROUP_NAME EXCEPTION;
+BEGIN
+    SELECT COUNT(*) INTO unique_check from Groups WHERE name = :NEW.name;
+    IF unique_check > 0 THEN
+        RAISE NOT_UNIQUE_GROUP_NAME;
+    END IF;
+END group_name_check;
+
+
