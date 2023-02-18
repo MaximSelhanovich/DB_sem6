@@ -198,10 +198,13 @@ insert into Groups(name) values('Maybe'); /
 commit; /
 select * from Groups;
 
-
+insert into Groups(name) values('Maybe');
 insert into groups(id, name) values(6, 'Nein');
+
 insert into students(ID, name, group_id) values(3, 'dUFFI', 3);
 
+insert into students(name, group_id) values('Me', 1); /
+insert into students(name, group_id) values('another', 1); /
 insert into students(name, group_id) values('Mario', 2); /
 insert into students(name, group_id) values('sONIC', 2); /
 insert into students(name, group_id) values('Duck', 3); /
@@ -218,15 +221,15 @@ commit;
 
 DELETE FROM groups WHERE NAME = 'NO'; /
 SELECT * FROM STUDENTS;
-
+SELECT * FROM groups;
 
 SELECT * FROM Students_logs;
 SELECT * FROM groups_logs;
 SELECT operation_type, group_id, name FROM Groups_logs WHERE group_id = 2;
 begin
-    go_back(TO_TIMESTAMP('13-FEB-23 02.04.40.000000000 PM'));
+    go_back(TO_TIMESTAMP('13-FEB-23 08.17.13.000000000 PM'));
 end;
-
-
+TRUNCATE TABLE Students;
+TRUNCATE TABLE groups;
 /*ALTER TABLE students ENABLE ROW MOVEMENT;
 flashback table students to timestamp (SYSTIMESTAMP - INTERVAL '1' hour);*/
