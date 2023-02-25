@@ -5,3 +5,27 @@ CREATE TABLE MyTable
     val NUMBER,
     constraint uint_id check (id between 0 and 4294967295)
 );
+
+CREATE OR REPLACE PROCEDURE test_name(PAR1 VARCHAR2, PAR2 NUMBER)
+IS
+    N BOOLEAN;
+BEGIN
+    N := TRUE;
+    
+END test_name;
+
+CREATE OR REPLACE PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
+IS
+    N BOOLEAN;
+BEGIN
+
+    N := TRUE;
+END test_name_PROD;
+
+CREATE OR REPLACE FUNCTION fffftest_name(PAR1 VARCHAR2, PAR2 NUMBER) RETURN BOOLEAN
+IS
+    N BOOLEAN;
+BEGIN
+    N := TRUE;
+    
+END fffftest_name;

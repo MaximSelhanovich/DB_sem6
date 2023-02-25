@@ -97,50 +97,6 @@ BEGIN
     check_tables('C##DEVELOPMENT', 'C##PRODUCTION');
 END;
 
-select * from all_constraints;
-select * from all_constraints
-where OWNER = 'C##DEVELOPMENT' or OWNER = 'C##PRODUCTION';
-
-
-/*with table_hierarchy as (
-  select child_owner, child_table, parent_owner, parent_table
-  from (
-    select owner child_owner, table_name child_table,
-    r_owner parent_owner, r_constraint_name constraint_name
-    from ALL_constraints 
-    where constraint_type = 'R'
-  ) join (
-    select owner parent_owner, constraint_name, table_name parent_table
-    from ALL_constraints
-    where constraint_type = 'P'
-  )
-  using(parent_owner, constraint_name)
-)
-select distinct child_owner, child_table from (
-  select * from table_hierarchy
-  where (child_owner, child_table) in (
-    select parent_owner, parent_table from table_hierarchy
-  )
-) a
-where connect_by_iscycle = 1
-connect by nocycle (prior child_owner, prior child_table)
-                = ((parent_owner, parent_table));*/
-
-
---r_constraint_name имя на которое ссылаемся, ищем его просто в именах constraint_name? и если находим,
--- то по этому имени ищем таблицу, которой и принадлежит этот constraint
-select *
-from all_constraints
-where r_owner = 'C##DEVELOPMENT'
-and constraint_type = 'R'
-and r_constraint_name in
- (
-   select constraint_name from all_constraints
-   where constraint_type in ('P', 'U')
-   and owner = 'C##DEVELOPMENT'
- );
-
-
 CREATE OR REPLACE VIEW parent_child_view AS
 SELECT pk.owner      parent_owner,
        pk.table_name parent_table,
@@ -153,8 +109,8 @@ WHERE pk.owner = fk.r_owner
     AND fk.constraint_type = 'R'
     AND pk.owner = 'C##DEVELOPMENT';
 
-    SELECT * FROM parent_child_view;
-    
+SELECT * FROM parent_child_view;
+
 
 CREATE OR REPLACE PROCEDURE circular_check
 IS
@@ -173,7 +129,7 @@ message VARCHAR2(200);
 BEGIN
     FOR rec IN parent_child_cursor
     LOOP
-        message := rec.parent_table || '->' || rec.child_table;
+        message := rec.parent_table || '<-' || rec.child_table;
         DBMS_OUTPUT.PUT_LINE(recursive_part_circular_check(rec.parent_table, 
                                                             rec.child_table,
                                                             message));
@@ -188,20 +144,21 @@ CREATE OR REPLACE FUNCTION recursive_part_circular_check(start_table VARCHAR2,
 IS
     check_val VARCHAR2(100);
 BEGIN
-    SELECT child_table INTO check_val FROM parent_child_view WHERE parent_table = step_table AND ROWNUM = 1;
+    SELECT child_table INTO check_val FROM parent_child_view 
+    WHERE parent_table = step_table AND ROWNUM = 1;
     IF start_table = check_val THEN
-        message := message || '->' || start_table;
+        message := message || '<-' || start_table;
         RETURN 1;
     ELSE
-        message := message || '->' || check_val;
+        message := message || '<-' || check_val;
         RETURN recursive_part_circular_check(start_table, check_val, message);
     END IF;
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
-        message := 'no cycle';
+        --message := 'no cycle';
         RETURN 0;
 END recursive_part_circular_check;
- 
+
 
 BEGIN
     DBMS_OUTPUT.PUT_LINE('START');
@@ -209,14 +166,88 @@ BEGIN
 END;
 
 
- 
-SELECT pk.owner      parent_owner,
-       pk.table_name parent_table,
-       fk.owner      child_owner,
-       fk.table_name child_table
-FROM all_constraints fk,
-     all_constraints pk
-WHERE pk.owner = fk.r_owner
-    AND pk.constraint_name = fk.r_constraint_name
-    AND fk.constraint_type = 'R'
-    AND pk.owner = 'C##DEVELOPMENT';
+-------------------------------------------------------
+
+SELECT * FROM all_procedures
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_objects
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_source
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+
+CREATE OR REPLACE PROCEDURE complement_callable_differences(dev_schema_name VARCHAR2,
+                                                            callable_name VARCHAR2)
+IS
+CURSOR callable_to_write IS
+    SELECT text FROM all_source
+    WHERE owner = dev_schema_name
+    AND name = callable_name;
+BEGIN
+    FOR rec IN callable_to_write
+    LOOP
+        DBMS_OUTPUT.PUT_LINE(rec.text);
+    END LOOP;
+END complement_callable_differences;
+
+CREATE OR REPLACE PROCEDURE check_callables(dev_schema_name VARCHAR2,
+                                            prod_schema_name VARCHAR2,
+                                            type_name VARCHAR2) 
+IS
+CURSOR callable_check(callable_name VARCHAR2) IS
+    SELECT
+    dev.owner || '.' || dev.name dev_name,
+    prod.owner || '.' || prod.name prod_name,
+    dev.text dev_text, prod.text prod_text
+    FROM all_source dev
+    FULL OUTER JOIN 
+        (SELECT owner, line, text, name 
+        FROM all_source 
+        WHERE owner = prod_schema_name AND type = type_name) prod
+    ON dev.name = prod.name AND dev.LINE = prod.LINE
+    WHERE dev.type = type_name AND dev.owner = dev_schema_name
+    AND dev.name = callable_name;
+    
+CURSOR callable_names IS
+    SELECT DISTINCT object_name FROM all_procedures 
+    WHERE object_type = type_name 
+    AND (owner = dev_schema_name OR owner = prod_schema_name);
+BEGIN
+    FOR call_rec IN callable_names
+    LOOP
+        FOR rec IN callable_check(call_rec.object_name)
+        LOOP
+            IF rec.prod_text IS NULL OR UPPER(rec.dev_text) != UPPER(rec.prod_text) THEN
+                complement_callable_differences(dev_schema_name, call_rec.object_name);
+                EXIT;
+            END IF;
+        END LOOP;
+    END LOOP;
+    drop_callables(dev_schema_name, prod_schema_name, type_name);
+END check_callables;
+
+BEGIN
+    check_callables('C##DEVELOPMENT', 'C##PRODUCTION', 'FUNCTION');
+END;
+
+CREATE OR REPLACE PROCEDURE drop_callables(dev_schema_name VARCHAR2,
+                                            prod_schema_name VARCHAR2,
+                                            type_name VARCHAR2) 
+IS
+CURSOR to_drop IS
+    (SELECT object_name FROM all_procedures 
+    WHERE owner = prod_schema_name AND object_type = type_name)
+    MINUS
+    (SELECT object_name FROM all_procedures 
+    WHERE owner = dev_schema_name AND object_type = type_name);
+BEGIN
+    FOR rec IN to_drop
+    LOOP
+        DBMS_OUTPUT.PUT_LINE('DROP ' || type_name || ' ' || rec.object_name);
+    END LOOP;
+END drop_callables;
