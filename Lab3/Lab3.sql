@@ -282,12 +282,13 @@ AND type = 'PACKAGE'
 ORDER BY text;
 
 --well, this can help, but further particular function body should be detected
-SELECT owner, TRIM(' ' FROM text) FROM all_source
+SELECT * FROM all_source
 WHERE (owner = 'C##DEVELOPMENT' OR owner = 'C##PRODUCTION')
 AND type = 'PACKAGE BODY' AND text != chr(10);
 
 
 CREATE OR REPLACE FUNCTION get_callable_from_package(schema_name VARCHAR2,
+                                                    package_name VARCHAR2,
                                                     callable_type VARCHAR2,
                                                     callable_name VARCHAR2) 
                                                     RETURN VARCHAR2
@@ -296,7 +297,7 @@ CURSOR get_callable IS
     SELECT owner, 
         UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) callable_text 
     FROM all_source
-    WHERE owner = schema_name
+    WHERE owner = schema_name AND name = package_name
     AND type = 'PACKAGE BODY' AND text != chr(10);
 
 callable VARCHAR2(32676) := '';
@@ -313,8 +314,9 @@ BEGIN
             callable := callable || rec.callable_text;
         END IF;
                 DBMS_OUTPUT.PUT_LINE(callable);
-        IF NOT REGEXP_LIKE(callable, '^' || UPPER(callable_type) || '?' 
-                                || UPPER(callable_name)|| '*','ix') THEN
+        IF NOT REGEXP_LIKE(callable, '(^' || callable_type 
+                                    || ')*(' ||callable_name  || '*)', 
+                           'ix') THEN
             write_flag := FALSE;
             callable := '';
         END IF;
@@ -329,23 +331,22 @@ END get_callable_from_package;
 begin
     DBMS_OUTPUT.PUT_LINE('TEST: ' || 
     get_callable_from_package('C##DEVELOPMENT',
+                            'TEST_DEV_PACKAGE',
                             'PROCEDURE',
                             'test_name_PROD'));
 end;
 
 declare 
-    
 callable_name varchar2(100) := 'test_name_PROD';
 vsad varchar2(1200) := 'END TEST_DEV_PACKAGE_PROCEDURE;';
 callable_type varchar2(100) := 'PROCEDURE';
-
 BEGIN
     /*IF REGEXP_LIKE('TEST_DEV_PACKAGE_PROCEDUREISN BOOLEAN;BEGINN := TRUE;END TEST_DEV_PACKAGE_PROCEDURE;', 'END ' || UPPER(callable_name) || ';?$') THEN
         DBMS_OUTPUT.PUT_LINE('SMJEVHVODCIHVMFOTJKGVH');
     END IF;*/
-    IF REGEXP_LIKE('PROCEDURE TEST_NAME_PROD(PAR1 VARCHAR2, PAR2 NUMBER)', 
-                    '^' || UPPER(callable_type) || '(?)' 
-                        || UPPER(callable_name)|| '(*)','ix') THEN
+    IF REGEXP_LIKE('PROCEDURE TEST_NAME_PROD() ID', 
+                    /*'^' || 'PROCEDURE' || '(?)' 
+                        || 'TEST_NAME_PROD' || '*'*/ '(^' || callable_type || ')*(' ||callable_name  || '*)', 'ix') THEN
         DBMS_OUTPUT.PUT_LINE('SMJEVHVODCIHVMFOTJKGVH');
     END IF;
 END;
