@@ -167,6 +167,7 @@ END;
 
 
 -------------------------------------------------------
+--CALLABLES SECTION
 
 SELECT * FROM all_procedures
 WHERE owner = 'C##DEVELOPMENT' 
@@ -231,10 +232,6 @@ BEGIN
     drop_callables(dev_schema_name, prod_schema_name, type_name);
 END check_callables;
 
-BEGIN
-    check_callables('C##DEVELOPMENT', 'C##PRODUCTION', 'FUNCTION');
-END;
-
 CREATE OR REPLACE PROCEDURE drop_callables(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2,
                                             type_name VARCHAR2) 
@@ -251,3 +248,100 @@ BEGIN
         DBMS_OUTPUT.PUT_LINE('DROP ' || type_name || ' ' || rec.object_name);
     END LOOP;
 END drop_callables;
+
+BEGIN
+    check_callables('C##DEVELOPMENT', 'C##PRODUCTION', 'FUNCTION');
+END;
+
+
+----------------------------------------------------
+--PACKAGES SECTION
+
+CREATE OR REPLACE PROCEDURE check_packages(dev_schema_name VARCHAR2,
+                                            prod_schema_name VARCHAR2)
+IS
+BEGIN
+    NULL;
+END;
+
+SELECT * FROM all_procedures
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_source
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+
+--WITH THIS WE CAN COMPARE PACKEG DECLARATION
+SELECT * FROM all_source
+WHERE (owner = 'C##DEVELOPMENT' OR owner = 'C##PRODUCTION')
+AND UPPER(text) NOT LIKE 'PACKAGE%' 
+AND UPPER(text) NOT LIKE ('END ' || NAME || '%')
+AND type = 'PACKAGE'
+ORDER BY text;
+
+--well, this can help, but further particular function body should be detected
+SELECT owner, TRIM(' ' FROM text) FROM all_source
+WHERE (owner = 'C##DEVELOPMENT' OR owner = 'C##PRODUCTION')
+AND type = 'PACKAGE BODY' AND text != chr(10);
+
+
+CREATE OR REPLACE FUNCTION get_callable_from_package(schema_name VARCHAR2,
+                                                    callable_type VARCHAR2,
+                                                    callable_name VARCHAR2) 
+                                                    RETURN VARCHAR2
+IS
+CURSOR get_callable IS
+    SELECT owner, 
+        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) callable_text 
+    FROM all_source
+    WHERE owner = schema_name
+    AND type = 'PACKAGE BODY' AND text != chr(10);
+
+callable VARCHAR2(32676) := '';
+write_flag BOOLEAN := FALSE;
+BEGIN
+    FOR rec IN get_callable
+    LOOP
+        IF REGEXP_LIKE(rec.callable_text, '^' || UPPER(callable_type) || '*', 'ix') THEN
+            write_flag := TRUE;
+        END IF;
+        DBMS_OUTPUT.PUT_LINE(callable);
+        IF write_flag THEN
+            callable := callable || rec.callable_text;
+        END IF;
+        IF REGEXP_LIKE(callable,'END ' || UPPER(callable_name) || ';?$') THEN
+            DBMS_OUTPUT.PUT_LINE(callable);
+            EXIT;
+        END IF;
+    END LOOP;
+    RETURN CALLABLE;
+END get_callable_from_package;
+
+begin
+    DBMS_OUTPUT.PUT_LINE('TEST: ' || 
+    get_callable_from_package('C##DEVELOPMENT',
+                            'PROCEDURE',
+                            'test_name_PROD'));
+end;
+
+declare 
+    
+callable_name varchar2(100) := 'test_dev_package_PROCEDURE';
+vsad varchar2(1200) := 'END TEST_DEV_PACKAGE_PROCEDURE;';
+
+BEGIN
+    /*IF REGEXP_LIKE('TEST_DEV_PACKAGE_PROCEDUREISN BOOLEAN;BEGINN := TRUE;END TEST_DEV_PACKAGE_PROCEDURE;', 'END ' || UPPER(callable_name) || ';?$') THEN
+        DBMS_OUTPUT.PUT_LINE('SMJEVHVODCIHVMFOTJKGVH');
+    END IF;*/
+    if REGEXP_LIKE(vsad, 'END ' || upper(callable_name) || ';?') then
+        DBMS_OUTPUT.PUT_LINE('equal');
+    end if;
+END;
+
+SELECT owner, 
+        trim(' ' from UPPER(TRANSLATE(text, CHR(10) || CHR(13), ' '))) callable_text 
+    FROM all_source
+    WHERE owner = 'C##DEVELOPMENT'
+    AND type = 'PACKAGE BODY' AND text != chr(10);

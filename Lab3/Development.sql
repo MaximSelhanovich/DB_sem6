@@ -85,3 +85,33 @@ BEGIN
     N := TRUE;
 END test_name_PROD;
 
+CREATE OR REPLACE PACKAGE test_dev_package AS
+    test_dev_package_var NUMBER := 0;
+    PROCEDURE test_dev_package_PROCEDURE;
+    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
+END test_dev_package; /
+
+CREATE 
+OR 
+REPLACE
+PACKAGE 
+BODY 
+
+test_dev_package AS
+    PROCEDURE 
+    test_dev_package_PROCEDURE 
+    IS
+        N BOOLEAN;
+    BEGIN
+        N := TRUE;
+    END test_dev_package_PROCEDURE;
+
+    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
+    IS
+        N BOOLEAN;
+    BEGIN
+        N := TRUE;
+    END test_name_PROD;
+END test_dev_package;
+
+
