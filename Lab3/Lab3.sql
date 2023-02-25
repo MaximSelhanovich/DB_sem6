@@ -306,10 +306,17 @@ BEGIN
     LOOP
         IF REGEXP_LIKE(rec.callable_text, '^' || UPPER(callable_type) || '*', 'ix') THEN
             write_flag := TRUE;
+            callable := callable || rec.callable_text;
+            continue;
         END IF;
-        DBMS_OUTPUT.PUT_LINE(callable);
         IF write_flag THEN
             callable := callable || rec.callable_text;
+        END IF;
+                DBMS_OUTPUT.PUT_LINE(callable);
+        IF NOT REGEXP_LIKE(callable, '^' || UPPER(callable_type) || '?' 
+                                || UPPER(callable_name)|| '*','ix') THEN
+            write_flag := FALSE;
+            callable := '';
         END IF;
         IF REGEXP_LIKE(callable,'END ' || UPPER(callable_name) || ';?$') THEN
             DBMS_OUTPUT.PUT_LINE(callable);
@@ -328,16 +335,19 @@ end;
 
 declare 
     
-callable_name varchar2(100) := 'test_dev_package_PROCEDURE';
+callable_name varchar2(100) := 'test_name_PROD';
 vsad varchar2(1200) := 'END TEST_DEV_PACKAGE_PROCEDURE;';
+callable_type varchar2(100) := 'PROCEDURE';
 
 BEGIN
     /*IF REGEXP_LIKE('TEST_DEV_PACKAGE_PROCEDUREISN BOOLEAN;BEGINN := TRUE;END TEST_DEV_PACKAGE_PROCEDURE;', 'END ' || UPPER(callable_name) || ';?$') THEN
         DBMS_OUTPUT.PUT_LINE('SMJEVHVODCIHVMFOTJKGVH');
     END IF;*/
-    if REGEXP_LIKE(vsad, 'END ' || upper(callable_name) || ';?') then
-        DBMS_OUTPUT.PUT_LINE('equal');
-    end if;
+    IF REGEXP_LIKE('PROCEDURE TEST_NAME_PROD(PAR1 VARCHAR2, PAR2 NUMBER)', 
+                    '^' || UPPER(callable_type) || '(?)' 
+                        || UPPER(callable_name)|| '(*)','ix') THEN
+        DBMS_OUTPUT.PUT_LINE('SMJEVHVODCIHVMFOTJKGVH');
+    END IF;
 END;
 
 SELECT owner, 
