@@ -84,7 +84,8 @@ IS
 BEGIN
     N := TRUE;
 END test_name_PROD;
-
+--------
+--PACKAGES
 CREATE OR REPLACE PACKAGE test_dev_package AS
     test_dev_package_var NUMBER := 0;
     PROCEDURE test_dev_package_PROCEDURE;
@@ -112,6 +113,11 @@ test_dev_package AS
     BEGIN
         N := TRUE;
     END test_name_PROD;
+    
+    FUNCTION qwe RETURN BOOLEAN IS
+    BEGIN
+        NULL;
+    END qwe;
 END test_dev_package;
 
 
