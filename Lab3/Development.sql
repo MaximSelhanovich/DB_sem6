@@ -74,7 +74,10 @@ CREATE OR REPLACE FUNCTION test_name_FUNC(PAR1 NUMBER, PAR2 VARCHAR2) RETURN NUM
 IS
     N BOOLEAN;
 BEGIN
+
+
     NULL;
+    
     null;
 END test_name_FUNC;
 
@@ -86,6 +89,15 @@ BEGIN
 END test_name_PROD;
 --------
 --PACKAGES
+
+
+CREATE OR REPLACE PACKAGE test_dev_package_IN_DEV AS
+    test_dev_package_var NUMBER := 0;
+    PROCEDURE test_dev_package_PROCEDURE;
+    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
+END test_dev_package_IN_DEV;
+
+
 CREATE OR REPLACE PACKAGE test_dev_package AS
     test_dev_package_var NUMBER := 0;
     PROCEDURE test_dev_package_PROCEDURE;

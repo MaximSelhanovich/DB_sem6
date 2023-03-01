@@ -30,12 +30,18 @@ BEGIN
     
 END fffftest_name;
 
+CREATE OR REPLACE PACKAGE test_dev_package_IN_PROD AS
+    test_dev_package_var NUMBER := 0;
+    PROCEDURE test_dev_package_PROCEDURE;
+    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
+END test_dev_package_IN_PROD;
+
 
 CREATE OR REPLACE PACKAGE test_dev_package AS
     test_dev_package_var NUMBER := 0;
     PROCEDURE test_dev_package_PROCEDURE;
     PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
-END test_dev_package; /
+END test_dev_package; 
 
 CREATE OR REPLACE PACKAGE BODY test_dev_package AS
         PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
@@ -53,3 +59,21 @@ CREATE OR REPLACE PACKAGE BODY test_dev_package AS
         N := TRUE;
     END test_dev_package_PROCEDURE;
 END test_dev_package;
+
+
+SELECT * FROM USER_IDENTIFIERS WHERE type in ('PACKAGE BODY', 'PACKAGE');
+
+
+DROP PACKAGE test_dev_package_not_in_dev;
+CREATE OR REPLACE PACKAGE test_dev_package_not_in_dev as
+PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
+END test_dev_package_not_in_dev;
+
+CREATE OR REPLACE PACKAGE BODY test_dev_package_not_in_dev  as
+        PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
+    IS
+        N BOOLEAN;
+    BEGIN
+        N := TRUE;
+    END test_name_PROD;
+end test_dev_package_not_in_dev;

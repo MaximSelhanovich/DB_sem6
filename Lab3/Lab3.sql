@@ -203,62 +203,61 @@ END add_object;
 
 CREATE OR REPLACE PROCEDURE check_callables(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2,
-                                            object_type VARCHAR2) 
+                                            param_object_type VARCHAR2)
 IS
-CURSOR callable_check(callable_name VARCHAR2) IS
-    SELECT
-    dev.owner || '.' || dev.name dev_name,
-    prod.owner || '.' || prod.name prod_name,
-    dev.text dev_text, prod.text prod_text
-    FROM all_source dev
-    FULL OUTER JOIN 
-        (SELECT owner, line, text, name 
-        FROM all_source 
-        WHERE owner = prod_schema_name AND type = object_type) prod
-    ON dev.name = prod.name AND dev.LINE = prod.LINE
-    WHERE dev.type = object_type AND dev.owner = dev_schema_name
-    AND dev.name = callable_name;
-    
-CURSOR callable_names IS
-    SELECT DISTINCT object_name FROM all_procedures 
-    WHERE object_type = object_type 
-    AND (owner = dev_schema_name OR owner = prod_schema_name);
+CURSOR get_callable_names IS
+    SELECT dev_name, prod_name
+    FROM 
+        (SELECT object_name dev_name FROM all_objects 
+        WHERE owner = dev_schema_name AND object_type = param_object_type) dev
+    FULL JOIN
+        (SELECT object_name prod_name FROM all_objects
+        WHERE owner = prod_schema_name AND object_type = param_object_type) prod
+    ON dev.dev_name = prod.prod_name;
+
 BEGIN
-    FOR call_rec IN callable_names
+    FOR rec IN get_callable_names 
     LOOP
-        FOR rec IN callable_check(call_rec.object_name)
-        LOOP
-            IF rec.prod_text IS NULL OR UPPER(rec.dev_text) != UPPER(rec.prod_text) THEN
-                add_object(dev_schema_name, call_rec.object_name, object_type);
-                EXIT;
-            END IF;
-        END LOOP;
+        IF rec.dev_name IS NULL THEN
+            DBMS_OUTPUT.PUT_LINE('DROP ' || param_object_type || ' ' 
+                                || rec.prod_name || ';');
+            CONTINUE;
+        END IF;
+        
+        IF rec.prod_name IS NULL OR
+            get_callable_text(dev_schema_name, param_object_type, rec.dev_name) 
+            !=
+            get_callable_text(prod_schema_name, param_object_type, rec.prod_name)
+        THEN
+            add_object(dev_schema_name, rec.dev_name, param_object_type);
+        END IF;
     END LOOP;
-    drop_callables(dev_schema_name, prod_schema_name, object_type);
 END check_callables;
 
-
-CREATE OR REPLACE PROCEDURE drop_callables(dev_schema_name VARCHAR2,
-                                            prod_schema_name VARCHAR2,
-                                            type_name VARCHAR2) 
+CREATE OR REPLACE FUNCTION get_callable_text(schema_name VARCHAR2,
+                                            object_type VARCHAR2,
+                                            object_name VARCHAR2) 
+                                            RETURN VARCHAR2
 IS
-CURSOR to_drop IS
-    (SELECT object_name FROM all_procedures 
-    WHERE owner = prod_schema_name AND object_type = type_name)
-    MINUS
-    (SELECT object_name FROM all_procedures 
-    WHERE owner = dev_schema_name AND object_type = type_name);
+CURSOR get_call_text IS
+    SELECT 
+        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
+    FROM all_source
+    WHERE owner = schema_name AND name = object_name
+    AND type = object_type AND text != chr(10);
+
+callable_text VARCHAR2(32000) := '';
 BEGIN
-    FOR rec IN to_drop
+    FOR rec IN get_call_text
     LOOP
-        DBMS_OUTPUT.PUT_LINE('DROP ' || type_name || ' ' || rec.object_name);
+        callable_text := callable_text || rec.object_text;
     END LOOP;
-END drop_callables;
+    RETURN callable_text;
+END get_callable_text;
 
 BEGIN
     check_callables('C##DEVELOPMENT', 'C##PRODUCTION', 'FUNCTION');
 END;
-
 
 ----------------------------------------------------
 --PACKAGES SECTION
@@ -266,33 +265,33 @@ END;
 CREATE OR REPLACE PROCEDURE check_packages(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2)
 IS
+
 BEGIN
     NULL;
 END;
 
+BEGIN
+ check_package_bodies('C##DEVELOPMENT', 'C##PRODUCTION');
+END; 
 
-begin
-    check_package_bodies('C##DEVELOPMENT', 'C##PRODUCTION');
-end;
 
 CREATE OR REPLACE PROCEDURE check_package_bodies(dev_schema_name VARCHAR2,
                                                 prod_schema_name VARCHAR2)
 IS
-CURSOR get_package_body_names IS
-    SELECT dev.object_name dev_name, prod.object_name prod_name 
-    FROM all_objects dev
-    FULL OUTER JOIN
-        (SELECT object_name 
-        FROM all_objects
-        WHERE owner = prod_schema_name
-        AND object_type = 'PACKAGE BODY') prod
-    ON dev.object_name = prod.object_name
-    WHERE owner = dev_schema_name 
-    AND object_type = 'PACKAGE BODY';
+CURSOR get_package_body_names IS    
+    SELECT dev_name, prod_name
+    FROM 
+        (SELECT object_name dev_name FROM all_objects 
+        WHERE owner = dev_schema_name AND object_type = 'PACKAGE BODY') dev
+    FULL JOIN
+        (SELECT object_name prod_name FROM all_objects
+        WHERE owner = prod_schema_name AND object_type = 'PACKAGE BODY') prod
+    ON dev.dev_name = prod.prod_name;     
+
 BEGIN
     FOR rec IN get_package_body_names
     LOOP
-        DBMS_OUTPUT.PUT_LINE(rec.dev_name || '----' || rec.prod_name);
+        --DBMS_OUTPUT.PUT_LINE(rec.dev_name || '----' || rec.prod_name);
         IF rec.dev_name IS NULL THEN
             DBMS_OUTPUT.PUT_LINE('DROP PACKAGE BODY ' 
                                 || prod_schema_name || '.' 
@@ -311,8 +310,7 @@ BEGIN
     END LOOP;
 END check_package_bodies;
 
---returns 0 if packages are not the same
-
+--returns 1 if packages are the same
 CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
                                                    prod_schema_name VARCHAR2,
                                                    package_body_name VARCHAR2) 
@@ -338,10 +336,10 @@ BEGIN
         IF rec.dev_name IS NULL OR rec.prod_name IS NULL THEN
             RETURN 0;
         END IF;
-        IF get_callable_from_package(dev_schema_name, package_body_name, 
+        IF get_object_from_package(dev_schema_name, package_body_name, 
                                         rec.dev_type, rec.dev_name) 
             !=
-            get_callable_from_package(prod_schema_name, package_body_name, 
+            get_object_from_package(prod_schema_name, package_body_name, 
                                         rec.prod_type, rec.prod_name) THEN
             RETURN 0;
         END IF;
@@ -369,7 +367,7 @@ SELECT dev.text, prod.text FROM all_source dev
 FULL OUTER JOIN
     (SELECT text, name, line FROM all_source 
     WHERE owner = 'C##PRODUCTION' AND type = 'PACKAGE') prod
-ON dev.name = prod.name
+ON dev.name = prod.name AND dev.text = prod.text
 WHERE dev.owner = 'C##DEVELOPMENT'
 AND dev.type = 'PACKAGE';
 
@@ -380,45 +378,62 @@ AND UPPER(text) NOT LIKE ('END ' || NAME || '%')
 AND type = 'PACKAGE'
 ORDER BY text;
 
---return callabl from package body as a single string for next comparison
-CREATE OR REPLACE FUNCTION get_callable_from_package(schema_name VARCHAR2,
+begin
+
+    dbms_output.put_line(get_object_from_package('C##DEVELOPMENT', 'TEST_DEV_PACKAGE',
+                                                    'PACKAGE','TEST_DEV_PACKAGE'));
+end;
+
+    SELECT owner, 
+        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
+    FROM all_source
+    WHERE owner = 'C##DEVELOPMENT' AND name = 'TEST_DEV_PACKAGE'
+    AND type = 'PACKAGE' AND text != chr(10);
+
+--return object from package body as a single string for next comparison
+CREATE OR REPLACE FUNCTION get_object_from_package(schema_name VARCHAR2,
                                                     package_name VARCHAR2,
-                                                    callable_type VARCHAR2,
-                                                    callable_name VARCHAR2) 
+                                                    object_type VARCHAR2,
+                                                    object_name VARCHAR2) 
                                                     RETURN VARCHAR2
 IS
-CURSOR get_callable IS
+res_obj_type varchar2(20) :=
+    CASE object_type 
+        WHEN 'PACKAGE' THEN object_type
+        ELSE 'PACKAGE BODY' END;
+
+CURSOR get_object IS
     SELECT owner, 
-        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) callable_text 
+        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
     FROM all_source
     WHERE owner = schema_name AND name = package_name
-    AND type = 'PACKAGE BODY' AND text != chr(10);
+    AND type = res_obj_type AND text != chr(10);
 
-callable VARCHAR2(32676) := '';
+obj_text VARCHAR2(32676) := '';
 write_flag BOOLEAN := FALSE;
 BEGIN
-    FOR rec IN get_callable
+    FOR rec IN get_object
     LOOP
-        IF REGEXP_LIKE(rec.callable_text, '^' || UPPER(callable_type) || '*', 'ix') THEN
+        IF REGEXP_LIKE(rec.object_text, '^' || UPPER(object_type) || '*', 'ix') THEN
             write_flag := TRUE;
-            callable := callable || rec.callable_text;
-            continue;
+            obj_text := obj_text || rec.object_text;
+            CONTINUE;
         END IF;
         IF write_flag THEN
-            callable := callable || rec.callable_text;
+            obj_text := obj_text || rec.object_text;
         END IF;
-                --DBMS_OUTPUT.PUT_LINE(callable);
-        IF NOT REGEXP_LIKE(callable, '(^' || callable_type 
-                                    || ')*(' ||callable_name  || '*)', 
+                --DBMS_OUTPUT.PUT_LINE(obj_text);
+        IF NOT REGEXP_LIKE(obj_text, '(^' || object_type 
+                                    || ')*(' ||object_name  || '*)', 
                            'ix') THEN
             write_flag := FALSE;
-            callable := '';
+            obj_text := '';
         END IF;
-        IF REGEXP_LIKE(callable,'END ' || UPPER(callable_name) || ';?$') THEN
-            --DBMS_OUTPUT.PUT_LINE(callable);
+        IF REGEXP_LIKE(obj_text,'END ' || UPPER(object_name) || ';?$') THEN
+            --DBMS_OUTPUT.PUT_LINE(obj_text);
             EXIT;
         END IF;
     END LOOP;
-    RETURN CALLABLE;
-END get_callable_from_package;
+    RETURN obj_text;
+END get_object_from_package;
 
