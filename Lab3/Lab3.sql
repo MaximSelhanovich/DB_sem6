@@ -193,7 +193,15 @@ CURSOR get_object IS
     SELECT text FROM all_source
     WHERE owner = dev_schema_name 
     AND name = object_name AND type = object_type;
+    
+check_var VARCHAR2(100);
 BEGIN
+    OPEN get_object;
+    FETCH get_object INTO check_var;
+    CLOSE get_object;
+    IF check_var IS NULL THEN
+        RETURN;
+    END IF;
     DBMS_OUTPUT.PUT_LINE('CREATE OR REPLACE ');
     FOR rec IN get_object
     LOOP
@@ -262,17 +270,41 @@ END;
 ----------------------------------------------------
 --PACKAGES SECTION
 
+    SELECT dev_name, prod_name
+    FROM 
+        (SELECT object_name dev_name FROM all_objects 
+        WHERE owner = 'C##DEVELOPMENT' AND object_type = 'PACKAGE BODY') dev
+    FULL JOIN
+        (SELECT object_name prod_name FROM all_objects
+        WHERE owner = 'C##PRODUCTION' AND object_type = 'PACKAGE BODY') prod
+    ON dev.dev_name = prod.prod_name;
+
+
+
 CREATE OR REPLACE PROCEDURE check_packages(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2)
 IS
+CURSOR get_package_names IS
+    SELECT dev_name, prod_name
+    FROM 
+        (SELECT object_name dev_name FROM all_objects 
+        WHERE owner = dev_schema_name AND object_type = 'PACKAGE') dev
+    FULL JOIN
+        (SELECT object_name prod_name FROM all_objects
+        WHERE owner = prod_schema_name AND object_type = 'PACKAGE') prod
+    ON dev.dev_name = prod.prod_name;
+
 
 BEGIN
-    NULL;
+    FOR rec IN get_package_names
+    LOOP
+        IF rec.prod_name IS NULL THEN
+            add_object(dev_schema_name, rec.dev_name, 'PACKAGE');
+            add_object(dev_schema_name, rec.dev_name, 'PACKAGE BODY');
+        END IF ;
+    END LOOP;
 END;
 
-BEGIN
- check_package_bodies('C##DEVELOPMENT', 'C##PRODUCTION');
-END; 
 
 
 CREATE OR REPLACE PROCEDURE check_package_bodies(dev_schema_name VARCHAR2,
@@ -347,20 +379,6 @@ BEGIN
     END LOOP ;
     RETURN 1;
 END is_same_package_bodies;
-
-SELECT * FROM all_objects
-WHERE (owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION')
-AND object_type IN ('PACKAGE', 'PACKAGE BODY');
-
-SELECT * FROM all_procedures
-WHERE owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION';
-
-SELECT * FROM all_source
-WHERE (owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION')
-AND type IN ('PACKAGE', 'PACKAGE BODY');
 
 --WITH THIS WE CAN COMPARE PACKEG DECLARATION
 SELECT dev.text, prod.text FROM all_source dev
