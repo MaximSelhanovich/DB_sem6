@@ -133,3 +133,24 @@ test_dev_package AS
 END test_dev_package;
 
 
+CREATE OR REPLACE PACKAGE tpackage AS
+    test_dev_package_var NUMBER := 0;
+END tpackage;
+
+CREATE 
+OR 
+REPLACE
+PACKAGE 
+BODY 
+
+tpackage AS
+    PROCEDURE 
+    test_dev_package_PROCEDURE 
+    IS
+        N BOOLEAN;
+    BEGIN
+        N := TRUE;
+    END test_dev_package_PROCEDURE;
+
+END tpackage;
+

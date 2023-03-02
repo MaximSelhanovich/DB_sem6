@@ -269,18 +269,6 @@ END;
 
 ----------------------------------------------------
 --PACKAGES SECTION
-
-    SELECT dev_name, prod_name
-    FROM 
-        (SELECT object_name dev_name FROM all_objects 
-        WHERE owner = 'C##DEVELOPMENT' AND object_type = 'PACKAGE BODY') dev
-    FULL JOIN
-        (SELECT object_name prod_name FROM all_objects
-        WHERE owner = 'C##PRODUCTION' AND object_type = 'PACKAGE BODY') prod
-    ON dev.dev_name = prod.prod_name;
-
-
-
 CREATE OR REPLACE PROCEDURE check_packages(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2)
 IS
@@ -293,54 +281,58 @@ CURSOR get_package_names IS
         (SELECT object_name prod_name FROM all_objects
         WHERE owner = prod_schema_name AND object_type = 'PACKAGE') prod
     ON dev.dev_name = prod.prod_name;
-
-
 BEGIN
     FOR rec IN get_package_names
     LOOP
         IF rec.prod_name IS NULL THEN
             add_object(dev_schema_name, rec.dev_name, 'PACKAGE');
             add_object(dev_schema_name, rec.dev_name, 'PACKAGE BODY');
+            CONTINUE;
         END IF ;
+        IF rec.dev_name IS NULL THEN
+            DBMS_OUTPUT.PUT_LINE('DROP PACKAGE ' || rec.prod_name || ';');
+            CONTINUE;
+        END IF;
+        IF get_object_from_package(dev_schema_name, rec.dev_name, 
+                                    'PACKAGE', rec.dev_name)
+            !=
+            get_object_from_package(prod_schema_name, rec.prod_name, 
+                                    'PACKAGE', rec.prod_name) 
+        THEN
+            add_object(dev_schema_name, rec.dev_name, 'PACKAGE');
+        END IF;
+        check_package_body(dev_schema_name, prod_schema_name, rec.dev_name);
     END LOOP;
 END;
 
-
-
-CREATE OR REPLACE PROCEDURE check_package_bodies(dev_schema_name VARCHAR2,
-                                                prod_schema_name VARCHAR2)
-IS
-CURSOR get_package_body_names IS    
-    SELECT dev_name, prod_name
-    FROM 
-        (SELECT object_name dev_name FROM all_objects 
-        WHERE owner = dev_schema_name AND object_type = 'PACKAGE BODY') dev
-    FULL JOIN
-        (SELECT object_name prod_name FROM all_objects
-        WHERE owner = prod_schema_name AND object_type = 'PACKAGE BODY') prod
-    ON dev.dev_name = prod.prod_name;     
-
+CREATE OR REPLACE PROCEDURE check_package_body(dev_schema_name VARCHAR2,
+                                                prod_schema_name VARCHAR2,
+                                                package_name VARCHAR2) IS
+dev_name VARCHAR2(200);
+prod_name VARCHAR2(200);
 BEGIN
-    FOR rec IN get_package_body_names
-    LOOP
-        --DBMS_OUTPUT.PUT_LINE(rec.dev_name || '----' || rec.prod_name);
-        IF rec.dev_name IS NULL THEN
-            DBMS_OUTPUT.PUT_LINE('DROP PACKAGE BODY ' 
-                                || prod_schema_name || '.' 
-                                || rec.prod_name || ';');
-            CONTINUE;
-        END IF;
-        IF rec.prod_name IS NULL THEN
-            add_object(dev_schema_name, rec.dev_name, 'PACKAGE BODY');
-            CONTINUE;
-        END IF;
-        IF is_same_package_bodies(dev_schema_name, 
-                                prod_schema_name, 
-                                rec.dev_name) = 0 THEN
-            add_object(dev_schema_name, rec.dev_name, 'PACKAGE BODY');
-        END IF;
-    END LOOP;
-END check_package_bodies;
+    SELECT object_name INTO dev_name FROM all_objects
+    WHERE owner = dev_schema_name 
+    AND object_type = 'PACKAGE BODY' AND object_name = package_name;
+
+    SELECT object_name INTO prod_name FROM all_objects
+    WHERE owner = prod_schema_name 
+    AND object_type = 'PACKAGE BODY' AND object_name = package_name;
+    
+    IF dev_name IS NULL AND prod_name IS NULL THEN
+        RETURN;
+    END IF;
+    IF dev_name IS NULL THEN
+        DBMS_OUTPUT.PUT_LINE('DROP PACKAGE BODY ' || prod_name || ';');
+        RETURN;
+    END IF;
+    IF prod_name IS NULL 
+        OR is_same_package_bodies(dev_schema_name, 
+                                    prod_schema_name, 
+                                    package_name) = 0 THEN
+        add_object(dev_schema_name, dev_name, 'PACKAGE BODY');
+    END IF;
+END check_package_body;    
 
 --returns 1 if packages are the same
 CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
@@ -349,18 +341,16 @@ CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
                                                    RETURN NUMBER
 IS
 CURSOR get_package_callable_names IS
-    SELECT dev.name dev_name, dev.type dev_type, 
-            prod.name prod_name, prod.type prod_type 
-    FROM all_identifiers dev
-    FULL OUTER JOIN
-        (SELECT name, type FROM all_identifiers 
-        WHERE owner = prod_schema_name 
-        AND object_name = package_body_name AND object_type = 'PACKAGE BODY'
+    SELECT dev_name, dev_type, prod_name, prod_type
+    FROM 
+        (SELECT name dev_name, type dev_type FROM all_identifiers 
+        WHERE owner = 'C##DEVELOPMENT' AND object_type = 'PACKAGE BODY'
+        AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION') dev
+    FULL JOIN
+        (SELECT name prod_name, type prod_type FROM all_identifiers
+        WHERE owner = 'C##PRODUCTION'  AND object_type = 'PACKAGE BODY'
         AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION') prod
-    ON dev.name = prod.name
-    WHERE owner = dev_schema_name 
-    AND object_name = package_body_name AND object_type = 'PACKAGE BODY'
-    AND dev.type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION';
+    ON dev.dev_name = prod.prod_name;
 
 BEGIN
     FOR rec IN get_package_callable_names
@@ -375,38 +365,9 @@ BEGIN
                                         rec.prod_type, rec.prod_name) THEN
             RETURN 0;
         END IF;
-        DBMS_OUTPUT.PUT_LINE(rec.dev_name || '----' || rec.prod_name);
     END LOOP ;
     RETURN 1;
 END is_same_package_bodies;
-
---WITH THIS WE CAN COMPARE PACKEG DECLARATION
-SELECT dev.text, prod.text FROM all_source dev
-FULL OUTER JOIN
-    (SELECT text, name, line FROM all_source 
-    WHERE owner = 'C##PRODUCTION' AND type = 'PACKAGE') prod
-ON dev.name = prod.name AND dev.text = prod.text
-WHERE dev.owner = 'C##DEVELOPMENT'
-AND dev.type = 'PACKAGE';
-
-SELECT * FROM all_source
-WHERE (owner = 'C##DEVELOPMENT' OR owner = 'C##PRODUCTION')
-AND UPPER(text) NOT LIKE 'PACKAGE%' 
-AND UPPER(text) NOT LIKE ('END ' || NAME || '%')
-AND type = 'PACKAGE'
-ORDER BY text;
-
-begin
-
-    dbms_output.put_line(get_object_from_package('C##DEVELOPMENT', 'TEST_DEV_PACKAGE',
-                                                    'PACKAGE','TEST_DEV_PACKAGE'));
-end;
-
-    SELECT owner, 
-        UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
-    FROM all_source
-    WHERE owner = 'C##DEVELOPMENT' AND name = 'TEST_DEV_PACKAGE'
-    AND type = 'PACKAGE' AND text != chr(10);
 
 --return object from package body as a single string for next comparison
 CREATE OR REPLACE FUNCTION get_object_from_package(schema_name VARCHAR2,
@@ -440,7 +401,6 @@ BEGIN
         IF write_flag THEN
             obj_text := obj_text || rec.object_text;
         END IF;
-                --DBMS_OUTPUT.PUT_LINE(obj_text);
         IF NOT REGEXP_LIKE(obj_text, '(^' || object_type 
                                     || ')*(' ||object_name  || '*)', 
                            'ix') THEN
@@ -448,10 +408,8 @@ BEGIN
             obj_text := '';
         END IF;
         IF REGEXP_LIKE(obj_text,'END ' || UPPER(object_name) || ';?$') THEN
-            --DBMS_OUTPUT.PUT_LINE(obj_text);
             EXIT;
         END IF;
     END LOOP;
     RETURN obj_text;
 END get_object_from_package;
-
