@@ -16,6 +16,8 @@ CREATE TABLE MyChildTable
         REFERENCES Groups(id)
 ); /
 
+DROP INDEX my_tab_index_for_test; /
+CREATE INDEX my_tab_index_for_test ON MyTable(val, name);
 
 CREATE TABLE MyTable 
 (

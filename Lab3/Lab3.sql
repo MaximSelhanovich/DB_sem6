@@ -413,3 +413,100 @@ BEGIN
     END LOOP;
     RETURN obj_text;
 END get_object_from_package;
+
+
+-----------------------------------------------------
+--INDEX SECTIOM
+CREATE OR REPLACE FUNCTION get_index_string(schema_name VARCHAR2,
+                                            param_index_name VARCHAR2) 
+                                            RETURN VARCHAR2
+IS
+CURSOR get_index IS
+    SELECT aic.index_name, aic.table_name, 
+            aic.column_name, aic.column_position, ai.uniqueness 
+    FROM all_ind_columns aic
+    INNER JOIN all_indexes ai
+    ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
+    WHERE aic.index_owner = schema_name AND aic.index_name = param_index_name
+    ORDER BY aic.column_position;
+    
+index_rec get_index%ROWTYPE;
+index_string VARCHAR2(200);
+BEGIN
+    OPEN get_index;
+    FETCH get_index INTO index_rec;
+    index_string := index_string || ' ' || index_rec.table_name || '(';
+    WHILE get_index%FOUND 
+    LOOP
+        index_string := index_string || index_rec.column_name || ', ';
+        FETCH get_index INTO index_rec;
+    END LOOP;
+    CLOSE get_index;
+    index_string := RTRIM(index_string, ', ');
+    index_string := index_string || ')';
+    RETURN index_string;
+END get_index_string;
+
+CREATE OR REPLACE PROCEDURE check_indexes(dev_schema_name VARCHAR2,
+                                            prod_schema_name VARCHAR2)
+IS
+CURSOR get_indexes IS
+    SELECT DISTINCT dev_uniqueness, dev_index_name, prod_uniqueness, prod_index_name  FROM
+        (SELECT ai.index_name dev_index_name, ai.index_type dev_index_type, 
+                ai.table_name dev_table_name, ai.table_type dev_table_type, 
+                ai.uniqueness dev_uniqueness, aic.column_name dev_column_name, 
+                aic.column_position dev_column_position
+        FROM all_indexes ai
+        INNER JOIN all_ind_columns aic
+        ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
+        WHERE ai.owner = 'C##DEVELOPMENT') dev
+    FULL OUTER JOIN
+        (SELECT ai.index_name prod_index_name, ai.index_type prod_index_type, 
+                ai.table_name prod_table_name, ai.table_type prod_table_type, 
+                ai.uniqueness prod_uniqueness, aic.column_name prod_column_name, 
+                aic.column_position prod_column_position
+        FROM all_indexes ai
+        INNER JOIN all_ind_columns aic
+        ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
+        WHERE ai.owner = 'C##PRODUCTION') prod
+    ON dev.dev_table_name = prod.prod_table_name 
+    AND dev.dev_column_name = prod.prod_column_name;
+
+res_index_name VARCHAR2(200);
+BEGIN
+    FOR rec IN get_indexes
+    LOOP
+        IF rec.prod_index_name IS NULL THEN
+            res_index_name := rec.dev_index_name;
+            IF rec.dev_index_name LIKE 'SYS_%' THEN
+                res_index_name := 'GENERATED_' || rec.dev_index_name;
+            END IF;
+            DBMS_OUTPUT.PUT_LINE('CREATE ' || rec.dev_uniqueness 
+                                || ' INDEX ' || res_index_name 
+                                || get_index_string(dev_schema_name, rec.dev_index_name));
+            CONTINUE;
+        END IF;
+        
+        IF rec.dev_index_name IS NULL THEN
+            DBMS_OUTPUT.PUT_LINE('DROP INDEX ' || rec.prod_index_name || ';');
+            CONTINUE;
+        END IF;
+        IF get_index_string(dev_schema_name, rec.dev_index_name)
+            !=
+            get_index_string(prod_schema_name, rec.prod_index_name)
+            OR rec.dev_uniqueness != rec.prod_uniqueness THEN
+            DBMS_OUTPUT.PUT_LINE('DROP INDEX ' || rec.prod_index_name || ';');
+            DBMS_OUTPUT.PUT_LINE('CREATE '|| rec.dev_uniqueness ||' INDEX ' 
+                                || rec.prod_index_name 
+                                || get_index_string(dev_schema_name, rec.dev_index_name) ||';');
+        END IF;
+    END LOOP;
+END check_indexes;
+
+SELECT *
+FROM all_indexes
+WHERE owner = 'C##DEVELOPMENT'; /
+
+SELECT *
+FROM all_ind_columns
+WHERE index_owner = 'C##DEVELOPMENT';

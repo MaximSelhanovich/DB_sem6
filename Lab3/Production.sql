@@ -1,9 +1,24 @@
 DROP TABLE MyTable; /
+
+DROP INDEX my_tab_index_for_test;
+CREATE INDEX my_tab_index_for_test ON MyTable(name, val);
+
+DROP INDEX my_tab_index_NOT_IN_DEV;
+CREATE INDEX my_tab_index_NOT_IN_DEV ON MyTable(times);
+
 CREATE TABLE MyTable 
 (
     id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) NOT NULL PRIMARY KEY,
     val NUMBER,
+    name varchar2(200),
+    times TIMESTAMP,
     constraint uint_id check (id between 0 and 4294967295)
+);
+
+CREATE TABLE NEWTABLE
+(
+    id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) not null PRIMARY KEY,
+    STUDENT_ID NUMBER NOT NULL
 );
 
 CREATE OR REPLACE PROCEDURE test_name(PAR1 VARCHAR2, PAR2 NUMBER)
