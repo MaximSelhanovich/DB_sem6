@@ -6,16 +6,22 @@ CREATE INDEX my_tab_index_for_test ON MyTable(name, val);
 DROP INDEX my_tab_index_NOT_IN_DEV;
 CREATE INDEX my_tab_index_NOT_IN_DEV ON MyTable(times);
 
+DROP TABLE MyTable; /
 CREATE TABLE MyTable 
 (
     id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) NOT NULL PRIMARY KEY,
     val NUMBER,
     name varchar2(200),
-    times TIMESTAMP,
     constraint uint_id check (id between 0 and 4294967295)
 );
 
 CREATE TABLE NEWTABLE
+(
+    id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) not null PRIMARY KEY,
+    STUDENT_ID NUMBER NOT NULL
+);
+
+CREATE TABLE table_not_in_dev
 (
     id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) not null PRIMARY KEY,
     STUDENT_ID NUMBER NOT NULL
