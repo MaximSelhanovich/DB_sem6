@@ -32,17 +32,6 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE(');');
 END add_table;
 
-SELECT column_name, data_type, data_length, nullable, 
-        column_id, data_default 
-FROM all_tab_columns WHERE owner = 'C##DEVELOPMENT' AND table_name = 'MYTABLE'; /
-
-SELECT * FROM 
-    (SELECT column_name dev_name FROM all_tab_columns
-    WHERE owner = 'C##DEVELOPMENT' AND table_name = 'MYTABLE') dev
-    FULL OUTER JOIN
-    (SELECT column_name prod_name FROM all_tab_columns
-    WHERE owner = 'C##PRODUCTION' AND table_name = 'MYTABLE') prod
-    ON dev.dev_name = prod.prod_name; 
 
 CREATE OR REPLACE PROCEDURE check_tables(dev_schema_name VARCHAR2,
                                         prod_schema_name VARCHAR2)
@@ -139,6 +128,104 @@ ALL_TAB_COLS
 ALL_TAB_COLUMNS
 ALL_TAB_COL_STATISTICS*/
 
+SELECT *  FROM all_cons_columns 
+WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable');
+    
+SELECT * FROM all_cons_columns
+WHERE owner = schema_name AND table_name = UPPER('MyChildTable');
+
+CREATE OR REPLACE FUNCTION get_constraint(schema_name VARCHAR2,
+                                            param_constraint_name VARCHAR2)
+                                            RETURN VARCHAR2
+IS
+CURSOR get_cols_in_cons IS
+    SELECT column_name FROM all_cons_columns
+    WHERE owner = schema_name AND constraint_name = param_constraint_name
+    ORDER BY POSITION;
+
+cons_type VARCHAR2(1);
+tmp_str VARCHAR2(100);
+cons_string VARCHAR2(200);
+BEGIN
+    SELECT constraint_type, search_condition INTO cons_type, tmp_str
+    FROM all_constraints 
+    WHERE owner = schema_name AND constraint_name = param_constraint_name;
+        cons_string := cons_string || 'CONSTRAINT ' || param_constraint_name;
+    CASE cons_type
+        WHEN 'R' THEN 
+            RETURN get_foreign_key_constraint(schema_name, param_constraint_name);
+        WHEN 'C' THEN
+            RETURN cons_string || ' CHECK (' || tmp_str || ')';
+        WHEN 'U' THEN
+            cons_string := cons_string || ' UNIQUE (';
+        WHEN 'U' THEN
+            cons_string := cons_string || ' PRIMARY KEY (';
+        ELSE RETURN NULL;
+    END CASE;
+    FOR rec in get_cols_in_cons
+    LOOP
+        cons_string := cons_string || rec.column_name || ', ';
+    END LOOP;
+    cons_string := RTRIM(cons_string, ', ');
+    cons_string := cons_string || ')';
+    RETURN cons_string;
+END get_constraint;
+
+CREATE OR REPLACE FUNCTION get_foreign_key_constraint(schema_name VARCHAR2,
+                                                    param_constraint_name VARCHAR2)
+                                                    RETURN VARCHAR2
+IS
+CURSOR ref_params IS
+    SELECT r_owner, r_constraint_name, delete_rule FROM all_constraints 
+    WHERE OWNER = schema_name
+    AND constraint_name = param_constraint_name AND constraint_type = 'R';
+    
+CURSOR refers_columns IS
+    SELECT * FROM all_cons_columns
+    WHERE owner = schema_name AND constraint_name = param_constraint_name
+    ORDER BY POSITION;
+    
+CURSOR referred_columns(ref_owner VARCHAR2, ref_cons_name VARCHAR2) IS
+    SELECT * FROM all_cons_columns
+    WHERE owner = ref_owner AND constraint_name = ref_cons_name
+    ORDER BY POSITION;
+
+ref_owner VARCHAR2(100);
+ref_cons_name VARCHAR2(100);
+del_rule VARCHAR2(20);
+
+first_write NUMBER := 1;
+cons_string VARCHAR2(300);
+BEGIN
+    OPEN ref_params;
+    FETCH ref_params INTO ref_owner, ref_cons_name, del_rule;
+    CLOSE ref_params;
+    cons_string := cons_string || 'CONSTRAINT ' 
+                || param_constraint_name || ' FOREIGN KEY (';
+    FOR rec IN refers_columns
+    LOOP
+        cons_string := cons_string || rec.column_name || ', ';
+    END LOOP;
+    cons_string := RTRIM(cons_string, ', ');
+    cons_string := cons_string || ') REFERENCES ';
+    
+    FOR rec IN referred_columns(ref_owner, ref_cons_name)
+    LOOP
+        IF first_write = 1 THEN
+            cons_string := cons_string || rec.table_name || ' (';
+            first_write := 0;
+        END IF;
+        cons_string := cons_string || rec.column_name || ', ';
+    END LOOP;
+    cons_string := RTRIM(cons_string, ', ');
+    cons_string := cons_string || ')';
+    IF del_rule != 'NO ACTION' THEN
+        cons_string := cons_string || ' ON DELETE ' || del_rule;
+    END IF;
+    RETURN cons_string;
+END get_foreign_key_constraint;
+
+
 CREATE OR REPLACE FUNCTION get_inline_constraints(schema_name VARCHAR2,
                                                 param_table_name VARCHAR2,
                                                 param_column_name VARCHAR2)
@@ -147,10 +234,11 @@ CURSOR get_constraints IS
     SELECT * FROM 
         (SELECT constraint_name FROM all_cons_columns
         WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
-        AND column_name = UPPER('MYTABLE_ID') AND REGEXP_LIKE(constraint_name, 'SYS_C\d+')) acc
+        AND column_name = UPPER('MYTABLE_ID')) acc
         INNER JOIN
         (SELECT constraint_name, constraint_type, search_condition FROM all_constraints
-        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')) allc
+        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
+        AND generated = 'GENERATED NAME') allc
         ON acc.constraint_name = allc.constraint_name;
 cons_string VARCHAR2(100);
 BEGIN
