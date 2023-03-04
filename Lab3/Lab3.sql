@@ -122,14 +122,15 @@ SELECT * FROM
 
 SELECT * FROM all_tab_columns 
 WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
+
+
+
+
 SELECT * from all_constraints 
 WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
 SELECT *  FROM all_cons_columns 
 WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable');   
 
-SELECT *
-FROM ALL_SEQUENCES
-WHERE sequence_owner = 'C##DEVELOPMENT';
 /*ALL_CONSTRAINTS
 ALL_CONS_COLUMNS
 ALL_IDENTIFIERS
@@ -138,6 +139,35 @@ ALL_TAB_COLS
 ALL_TAB_COLUMNS
 ALL_TAB_COL_STATISTICS*/
 
+CREATE OR REPLACE FUNCTION get_inline_constraints(schema_name VARCHAR2,
+                                                param_table_name VARCHAR2,
+                                                param_column_name VARCHAR2)
+                                                RETURN VARCHAR2 IS
+CURSOR get_constraints IS
+    SELECT * FROM 
+        (SELECT constraint_name FROM all_cons_columns
+        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
+        AND column_name = UPPER('MYTABLE_ID') AND REGEXP_LIKE(constraint_name, 'SYS_C\d+')) acc
+        INNER JOIN
+        (SELECT constraint_name, constraint_type, search_condition FROM all_constraints
+        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')) allc
+        ON acc.constraint_name = allc.constraint_name;
+cons_string VARCHAR2(100);
+BEGIN
+    FOR rec IN get_constraints
+    LOOP
+        CASE rec.constraint_type
+            WHEN 'P' THEN cons_string := cons_string || ' PRIMARY KEY';
+            WHEN 'U' THEN cons_string := cons_string || ' UNIQUE';
+            WHEN 'C' THEN
+                IF rec.search_condition NOT LIKE '% IS NOT NULL' THEN
+                    cons_string := cons_string || ' CHECK(' || rec.search_condition || ')';
+                END IF;
+            ELSE NULL;
+        END CASE;
+    END LOOP;
+    RETURN cons_string;
+END get_inline_constraints;
 
 CREATE OR REPLACE FUNCTION get_column_defenition(schema_name VARCHAR2,
                                                 param_table_name VARCHAR2,
@@ -149,7 +179,6 @@ CURSOR get_column IS
     FROM all_tab_columns
     WHERE owner = schema_name 
     AND table_name = param_table_name AND column_name = param_column_name;
-
 column_defenition VARCHAR2(300);
 BEGIN
     --use loop for a single row just for avoiding creating variables
@@ -164,6 +193,10 @@ BEGIN
         IF rec.nullable = 'N' THEN
             column_defenition := column_defenition || ' NOT NULL'; 
         END IF;
+        column_defenition := column_defenition 
+                            || get_inline_constraints(schema_name, 
+                                                    param_table_name, 
+                                                    param_column_name);
         IF rec.data_default IS NULL THEN
             CONTINUE;
         END IF;
@@ -178,6 +211,7 @@ BEGIN
     END LOOP;
     RETURN column_defenition;
 END get_column_defenition;
+
 
 CREATE OR REPLACE PROCEDURE check_table_structure(dev_schema_name VARCHAR2,
                                                     prod_schema_name VARCHAR2,
