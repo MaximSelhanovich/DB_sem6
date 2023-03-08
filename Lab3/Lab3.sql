@@ -6,8 +6,8 @@ IS
 CURSOR get_table IS
     SELECT column_name
     FROM all_tab_columns 
-    WHERE owner = schema_name
-    AND table_name = param_table_name;
+    WHERE owner = UPPER(schema_name)
+    AND table_name = UPPER(param_table_name);
 tab_rec get_table%ROWTYPE;
 tmp_string VARCHAR2(200) := '';
 BEGIN
@@ -29,9 +29,14 @@ BEGIN
         END IF;
     END LOOP;
     CLOSE get_table;
+    DBMS_OUTPUT.PUT_LINE(add_outline_constraints_to_table(schema_name, 
+                                                        param_table_name, TRUE));
     DBMS_OUTPUT.PUT_LINE(');');
 END add_table;
 
+BEGIN
+    add_table('C##DEVELOPMENT', upper('MyChildTable'));
+END;
 
 CREATE OR REPLACE PROCEDURE check_tables(dev_schema_name VARCHAR2,
                                         prod_schema_name VARCHAR2)
@@ -39,10 +44,10 @@ IS
 CURSOR get_table_names IS
     SELECT * FROM 
         (SELECT table_name dev_name FROM all_tables
-        WHERE owner = 'C##DEVELOPMENT') dev
+        WHERE owner = UPPER(dev_schema_name)) dev
         FULL OUTER JOIN
         (SELECT table_name prod_name FROM all_tables 
-        WHERE owner = 'C##PRODUCTION') prod
+        WHERE owner = UPPER(prod_schema_name)) prod
         ON dev.dev_name = prod.prod_name;
 BEGIN
     FOR rec IN get_table_names
@@ -75,7 +80,8 @@ BEGIN
     FROM all_sequences alls
     INNER JOIN all_tab_identity_cols atic
     ON alls.sequence_name = atic.sequence_name 
-    WHERE owner = schema_name AND alls.sequence_name = param_sequence_name;
+    WHERE owner = UPPER(schema_name) 
+    AND alls.sequence_name = UPPER(param_sequence_name);
     
     seq_string := seq_string || ' ' || gen_type || ' AS IDENTITY';
     IF min_val != 1 THEN
@@ -111,14 +117,15 @@ SELECT * FROM
 
 SELECT * FROM all_tab_columns 
 WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
-
-
-
-
 SELECT * from all_constraints 
 WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
 SELECT *  FROM all_cons_columns 
 WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable');   
+
+SELECT constraint_name, constraint_type from all_constraints 
+WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
+AND NOT REGEXP_LIKE(constraint_name, '^SYS_C\d+');
+
 
 /*ALL_CONSTRAINTS
 ALL_CONS_COLUMNS
@@ -128,11 +135,36 @@ ALL_TAB_COLS
 ALL_TAB_COLUMNS
 ALL_TAB_COL_STATISTICS*/
 
-SELECT *  FROM all_cons_columns 
-WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable');
-    
-SELECT * FROM all_cons_columns
-WHERE owner = schema_name AND table_name = UPPER('MyChildTable');
+
+CREATE OR REPLACE FUNCTION add_outline_constraints_to_table(schema_name VARCHAR2, 
+                                                            param_table_name VARCHAR2, 
+                                                            add_fk_constraints BOOLEAN)
+                                                            RETURN VARCHAR2
+IS
+CURSOR get_constraints IS
+    SELECT constraint_name, constraint_type from all_constraints 
+    WHERE owner = UPPER(schema_name) AND table_name = UPPER(param_table_name)
+    AND NOT REGEXP_LIKE(constraint_name, '^SYS_C\d+');
+all_cons_string VARCHAR2(3000);
+BEGIN
+    FOR rec IN get_constraints
+    LOOP
+        IF rec.constraint_type = 'P' THEN
+            IF add_fk_constraints = TRUE THEN
+                all_cons_string := all_cons_string 
+                        || get_foreign_key_constraint(schema_name, rec.constraint_name) 
+                        || ',' || CHR(10);
+            END IF;
+            CONTINUE;
+        END IF;
+        all_cons_string := all_cons_string 
+                    || get_constraint(schema_name, rec.constraint_name) 
+                    || ','|| CHR(10);
+    END LOOP;
+    all_cons_string := RTRIM(all_cons_string, ',' || CHR(10));
+    RETURN all_cons_string;
+END add_outline_constraints_to_table;
+
 
 CREATE OR REPLACE FUNCTION get_constraint(schema_name VARCHAR2,
                                             param_constraint_name VARCHAR2)
@@ -140,7 +172,8 @@ CREATE OR REPLACE FUNCTION get_constraint(schema_name VARCHAR2,
 IS
 CURSOR get_cols_in_cons IS
     SELECT column_name FROM all_cons_columns
-    WHERE owner = schema_name AND constraint_name = param_constraint_name
+    WHERE owner = UPPER(schema_name) 
+    AND constraint_name = UPPER(param_constraint_name)
     ORDER BY POSITION;
 
 cons_type VARCHAR2(1);
@@ -149,7 +182,8 @@ cons_string VARCHAR2(200);
 BEGIN
     SELECT constraint_type, search_condition INTO cons_type, tmp_str
     FROM all_constraints 
-    WHERE owner = schema_name AND constraint_name = param_constraint_name;
+    WHERE owner = UPPER(schema_name) 
+    AND constraint_name = UPPER(param_constraint_name);
         cons_string := cons_string || 'CONSTRAINT ' || param_constraint_name;
     CASE cons_type
         WHEN 'R' THEN 
@@ -177,17 +211,19 @@ CREATE OR REPLACE FUNCTION get_foreign_key_constraint(schema_name VARCHAR2,
 IS
 CURSOR ref_params IS
     SELECT r_owner, r_constraint_name, delete_rule FROM all_constraints 
-    WHERE OWNER = schema_name
-    AND constraint_name = param_constraint_name AND constraint_type = 'R';
+    WHERE owner = UPPER(schema_name)
+    AND constraint_name = UPPER(param_constraint_name) 
+    AND constraint_type = 'R';
     
 CURSOR refers_columns IS
     SELECT * FROM all_cons_columns
-    WHERE owner = schema_name AND constraint_name = param_constraint_name
+    WHERE owner = UPPER(schema_name) 
+    AND constraint_name = UPPER(param_constraint_name)
     ORDER BY POSITION;
     
 CURSOR referred_columns(ref_owner VARCHAR2, ref_cons_name VARCHAR2) IS
     SELECT * FROM all_cons_columns
-    WHERE owner = ref_owner AND constraint_name = ref_cons_name
+    WHERE owner = UPPER(ref_owner) AND constraint_name = ref_cons_name
     ORDER BY POSITION;
 
 ref_owner VARCHAR2(100);
@@ -233,11 +269,13 @@ CREATE OR REPLACE FUNCTION get_inline_constraints(schema_name VARCHAR2,
 CURSOR get_constraints IS
     SELECT * FROM 
         (SELECT constraint_name FROM all_cons_columns
-        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
-        AND column_name = UPPER('MYTABLE_ID')) acc
+        WHERE owner = UPPER(schema_name) 
+        AND table_name = UPPER(param_table_name)
+        AND column_name = UPPER(param_column_name)) acc
         INNER JOIN
-        (SELECT constraint_name, constraint_type, search_condition FROM all_constraints
-        WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
+        (SELECT constraint_name, constraint_type, search_condition 
+        FROM all_constraints
+        WHERE owner = UPPER(schema_name) AND table_name = UPPER(param_table_name)
         AND generated = 'GENERATED NAME') allc
         ON acc.constraint_name = allc.constraint_name;
 cons_string VARCHAR2(100);
@@ -265,8 +303,9 @@ CURSOR get_column IS
     SELECT table_name, column_name, data_type, data_length, 
             data_precision, data_scale, nullable, data_default
     FROM all_tab_columns
-    WHERE owner = schema_name 
-    AND table_name = param_table_name AND column_name = param_column_name;
+    WHERE owner = UPPER(schema_name) 
+    AND table_name = UPPER(param_table_name) 
+    AND column_name = UPPER(param_column_name);
 column_defenition VARCHAR2(300);
 BEGIN
     --use loop for a single row just for avoiding creating variables
@@ -308,10 +347,12 @@ IS
 CURSOR get_columns IS
     SELECT * FROM 
         (SELECT column_name dev_name FROM all_tab_columns
-        WHERE owner = 'C##DEVELOPMENT' AND table_name = 'MYTABLE') dev
+        WHERE owner = UPPER(dev_schema_name) 
+        AND table_name = UPPER(param_table_name)) dev
         FULL OUTER JOIN
         (SELECT column_name prod_name FROM all_tab_columns
-        WHERE owner = 'C##PRODUCTION' AND table_name = 'MYTABLE') prod
+        WHERE owner = UPPER(prod_schema_name) 
+        AND table_name = UPPER(param_table_name)) prod
         ON dev.dev_name = prod.prod_name;
 BEGIN
     FOR rec IN get_columns
@@ -447,10 +488,10 @@ CREATE OR REPLACE PROCEDURE add_object(dev_schema_name VARCHAR2,
 IS
 CURSOR get_object IS
     SELECT text FROM all_source
-    WHERE owner = dev_schema_name 
-    AND name = object_name AND type = object_type;
+    WHERE owner = UPPER(dev_schema_name) 
+    AND name = UPPER(object_name) AND type = UPPER(object_type);
     
-check_var VARCHAR2(100);
+check_var VARCHAR2(1000);
 BEGIN
     OPEN get_object;
     FETCH get_object INTO check_var;
@@ -473,10 +514,12 @@ CURSOR get_callable_names IS
     SELECT dev_name, prod_name
     FROM 
         (SELECT object_name dev_name FROM all_objects 
-        WHERE owner = dev_schema_name AND object_type = param_object_type) dev
-    FULL JOIN
+        WHERE owner = UPPER(dev_schema_name) 
+        AND object_type = UPPER(param_object_type)) dev
+        FULL JOIN
         (SELECT object_name prod_name FROM all_objects
-        WHERE owner = prod_schema_name AND object_type = param_object_type) prod
+        WHERE owner = UPPER(prod_schema_name) 
+        AND object_type = UPPER(param_object_type)) prod
     ON dev.dev_name = prod.prod_name;
 
 BEGIN
@@ -507,8 +550,8 @@ CURSOR get_call_text IS
     SELECT 
         UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
     FROM all_source
-    WHERE owner = schema_name AND name = object_name
-    AND type = object_type AND text != chr(10);
+    WHERE owner = UPPER(schema_name) AND name = UPPER(object_name)
+    AND type = UPPER(object_type) AND text != chr(10);
 
 callable_text VARCHAR2(32000) := '';
 BEGIN
@@ -532,10 +575,10 @@ CURSOR get_package_names IS
     SELECT dev_name, prod_name
     FROM 
         (SELECT object_name dev_name FROM all_objects 
-        WHERE owner = dev_schema_name AND object_type = 'PACKAGE') dev
+        WHERE owner = UPPER(dev_schema_name) AND object_type = 'PACKAGE') dev
     FULL JOIN
         (SELECT object_name prod_name FROM all_objects
-        WHERE owner = prod_schema_name AND object_type = 'PACKAGE') prod
+        WHERE owner = UPPER(prod_schema_name) AND object_type = 'PACKAGE') prod
     ON dev.dev_name = prod.prod_name;
 BEGIN
     FOR rec IN get_package_names
@@ -559,7 +602,7 @@ BEGIN
         END IF;
         check_package_body(dev_schema_name, prod_schema_name, rec.dev_name);
     END LOOP;
-END;
+END check_packages;
 
 CREATE OR REPLACE PROCEDURE check_package_body(dev_schema_name VARCHAR2,
                                                 prod_schema_name VARCHAR2,
@@ -568,12 +611,12 @@ dev_name VARCHAR2(200);
 prod_name VARCHAR2(200);
 BEGIN
     SELECT object_name INTO dev_name FROM all_objects
-    WHERE owner = dev_schema_name 
-    AND object_type = 'PACKAGE BODY' AND object_name = package_name;
+    WHERE owner = UPPER(dev_schema_name) 
+    AND object_type = 'PACKAGE BODY' AND object_name = UPPER(package_name);
 
     SELECT object_name INTO prod_name FROM all_objects
-    WHERE owner = prod_schema_name 
-    AND object_type = 'PACKAGE BODY' AND object_name = package_name;
+    WHERE owner = UPPER(prod_schema_name) 
+    AND object_type = 'PACKAGE BODY' AND object_name = UPPER(package_name);
     
     IF dev_name IS NULL AND prod_name IS NULL THEN
         RETURN;
@@ -588,7 +631,7 @@ BEGIN
                                     package_name) = 0 THEN
         add_object(dev_schema_name, dev_name, 'PACKAGE BODY');
     END IF;
-END check_package_body;    
+END check_package_body;
 
 --returns 1 if packages are the same
 CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
@@ -600,12 +643,14 @@ CURSOR get_package_callable_names IS
     SELECT dev_name, dev_type, prod_name, prod_type
     FROM 
         (SELECT name dev_name, type dev_type FROM all_identifiers 
-        WHERE owner = 'C##DEVELOPMENT' AND object_type = 'PACKAGE BODY'
-        AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION') dev
+        WHERE owner = UPPER(dev_schema_name) AND object_type = 'PACKAGE BODY'
+        AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION'
+        AND object_name = package_body_name) dev
     FULL JOIN
         (SELECT name prod_name, type prod_type FROM all_identifiers
-        WHERE owner = 'C##PRODUCTION'  AND object_type = 'PACKAGE BODY'
-        AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION') prod
+        WHERE owner = UPPER(prod_schema_name)  AND object_type = 'PACKAGE BODY'
+        AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION'
+        AND object_name = package_body_name) prod
     ON dev.dev_name = prod.prod_name;
 
 BEGIN
@@ -641,8 +686,8 @@ CURSOR get_object IS
     SELECT owner, 
         UPPER(TRIM(' ' FROM (TRANSLATE(text, CHR(10) || CHR(13), ' ')))) object_text 
     FROM all_source
-    WHERE owner = schema_name AND name = package_name
-    AND type = res_obj_type AND text != chr(10);
+    WHERE owner = UPPER(schema_name) AND name = UPPER(package_name)
+    AND type = UPPER(res_obj_type) AND text != chr(10);
 
 obj_text VARCHAR2(32676) := '';
 write_flag BOOLEAN := FALSE;
@@ -683,7 +728,8 @@ CURSOR get_index IS
     FROM all_ind_columns aic
     INNER JOIN all_indexes ai
     ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
-    WHERE aic.index_owner = schema_name AND aic.index_name = param_index_name
+    WHERE aic.index_owner = UPPER(schema_name) 
+    AND aic.index_name = UPPER(param_index_name)
     ORDER BY aic.column_position;
     
 index_rec get_index%ROWTYPE;
@@ -716,7 +762,7 @@ CURSOR get_indexes IS
         FROM all_indexes ai
         INNER JOIN all_ind_columns aic
         ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
-        WHERE ai.owner = 'C##DEVELOPMENT') dev
+        WHERE ai.owner = UPPER(dev_schema_name)) dev
     FULL OUTER JOIN
         (SELECT ai.index_name prod_index_name, ai.index_type prod_index_type, 
                 ai.table_name prod_table_name, ai.table_type prod_table_type, 
@@ -725,7 +771,7 @@ CURSOR get_indexes IS
         FROM all_indexes ai
         INNER JOIN all_ind_columns aic
         ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
-        WHERE ai.owner = 'C##PRODUCTION') prod
+        WHERE ai.owner = UPPER(prod_schema_name)) prod
     ON dev.dev_table_name = prod.prod_table_name 
     AND dev.dev_column_name = prod.prod_column_name;
 
