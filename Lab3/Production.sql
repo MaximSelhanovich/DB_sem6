@@ -1,5 +1,6 @@
 DROP TABLE MyTable; /
-
+DROP TABLE NEWTABLE; / 
+DROP TABLE table_not_in_dev; /
 DROP INDEX my_tab_index_for_test;
 CREATE INDEX my_tab_index_for_test ON MyTable(name, val);
 

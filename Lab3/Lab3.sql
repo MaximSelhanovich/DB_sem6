@@ -1,7 +1,140 @@
 --TODO: CONSTRAINT CHECK
 --TODO: MODIFY COMPARISON OF COLUMS IN TABLE
+SELECT *
+FROM all_indexes
+WHERE owner = 'C##DEVELOPMENT'
+OR owner = 'C##PRODUCTION';
+
+SELECT *
+FROM all_ind_columns
+WHERE index_owner = 'C##DEVELOPMENT'
+OR index_owner = 'C##PRODUCTION';
+
+SELECT * FROM all_procedures
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_objects
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_source
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_identifiers
+WHERE owner = 'C##DEVELOPMENT' 
+OR owner = 'C##PRODUCTION';
+
+select * from all_constraints 
+WHERE owner = 'C##DEVELOPMENT'
+OR owner = 'C##PRODUCTION';
+
+SELECT *  FROM all_cons_columns 
+WHERE owner = 'C##DEVELOPMENT'
+OR owner = 'C##PRODUCTION';
+
+SELECT * FROM all_tab_columns 
+WHERE owner = 'C##DEVELOPMENT' 
+AND table_name = UPPER('MyChildTable');
+
+SELECT * from all_constraints 
+WHERE owner = 'C##DEVELOPMENT' 
+AND table_name = UPPER('MyChildTable');
+
+SELECT *  FROM all_cons_columns 
+WHERE owner = 'C##DEVELOPMENT' 
+AND table_name = UPPER('MyChildTable');
+
+/*ALL_CONSTRAINTS
+ALL_CONS_COLUMNS
+ALL_IDENTIFIERS
+ALL_SEQUENCES
+ALL_TAB_COLS
+ALL_TAB_COLUMNS
+ALL_TAB_COL_STATISTICS*/
+DROP TABLE TablesToCreate; / 
+CREATE TABLE TablesToCreate
+(
+    id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    owner VARCHAR2(200),
+    name_of_table VARCHAR2(200),
+    is_cycle NUMBER DEFAULT 0,
+    lvl NUMBER DEFAULT 0,
+    fk_name VARCHAR2(200),
+    cycle_path VARCHAR2(1000)
+);
+
+BEGIN
+    check_tables('c##development', 'c##production');
+    add_all_tables('c##development');
+END;
+
+select * from tablestocreate;
+
+CREATE OR REPLACE PROCEDURE add_table_info(param_schema_name VARCHAR2)
+IS
+CURSOR get_parent_child_info IS
+SELECT level , CONNECT_BY_ISCYCLE is_cycle, 
+parent_owner, parent_table, child_owner, child_table, child_fk_name,
+parent_table || SYS_CONNECT_BY_PATH(child_table, '<-') whole_path
+FROM (SELECT * FROM 
+    (SELECT pk.owner parent_owner,
+       pk.table_name parent_table,
+       fk.owner      child_owner,
+       fk.table_name child_table,
+       fk.constraint_name child_fk_name
+FROM all_constraints fk
+INNER JOIN  all_constraints pk
+ON pk.owner = fk.r_owner
+    AND pk.constraint_name = fk.r_constraint_name
+WHERE fk.constraint_type = 'R'
+    AND pk.owner = UPPER(param_schema_name)))
+CONNECT BY NOCYCLE PRIOR child_table = parent_table;
+BEGIN
+    FOR rec IN get_parent_child_info
+    LOOP
+        IF rec.is_cycle = 1 THEN
+            UPDATE TablesToCreate SET
+                is_cycle = 1,
+                fk_name = rec.child_fk_name,
+                owner = rec.child_owner,
+                cycle_path = rec.whole_path
+                WHERE name_of_table = rec.child_table;
+            CONTINUE;
+        END IF;
+        UPDATE TablesToCreate SET
+            lvl = rec.level,
+            fk_name = rec.child_fk_name,
+            owner = rec.child_owner
+            WHERE name_of_table = rec.child_table;
+    END LOOP;
+END add_table_info;
+
+
+CREATE OR REPLACE PROCEDURE add_all_tables(schema_name VARCHAR2) IS
+BEGIN
+    add_table_info(schema_name);
+    FOR rec IN (SELECT * FROM tablestocreate ORDER BY lvl)
+    LOOP
+        add_table(schema_name, rec.name_of_table, rec.is_cycle = 0);
+    END LOOP;
+    
+    FOR rec IN (SELECT * FROM tablestocreate WHERE is_cycle = 1)
+    LOOP
+        DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' 
+                            || rec.name_of_table || CHR(10) || 'ADD ' 
+                            || get_foreign_key_constraint(schema_name, 
+                                                        rec.fk_name));
+        DBMS_OUTPUT.PUT_LINE('--' || rec.cycle_path);
+    END LOOP;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE TablesToCreate'; 
+END add_all_tables;
+
+
 CREATE OR REPLACE PROCEDURE add_table(schema_name VARCHAR2, 
-                                    param_table_name VARCHAR2)
+                                    param_table_name VARCHAR2,
+                                    add_fk_constraints BOOLEAN)
 IS
 CURSOR get_table IS
     SELECT column_name
@@ -30,13 +163,11 @@ BEGIN
     END LOOP;
     CLOSE get_table;
     DBMS_OUTPUT.PUT_LINE(add_outline_constraints_to_table(schema_name, 
-                                                        param_table_name, TRUE));
+                                                        param_table_name,
+                                                        add_fk_constraints));
     DBMS_OUTPUT.PUT_LINE(');');
 END add_table;
 
-BEGIN
-    add_table('C##DEVELOPMENT', upper('MyChildTable'));
-END;
 
 CREATE OR REPLACE PROCEDURE check_tables(dev_schema_name VARCHAR2,
                                         prod_schema_name VARCHAR2)
@@ -57,7 +188,9 @@ BEGIN
             CONTINUE;
         END IF;
         IF rec.prod_name IS NULL THEN
-            add_table(dev_schema_name, rec.dev_name);
+            INSERT INTO TablesToCreate(owner, name_of_table) 
+                VALUES(dev_schema_name, rec.dev_name);
+            --add_table(dev_schema_name, rec.dev_name, TRUE);
             CONTINUE;
         END IF;
         check_table_structure(dev_schema_name, prod_schema_name, rec.dev_name);
@@ -95,45 +228,6 @@ BEGIN
     END IF;
     RETURN seq_string;
 END get_sequence;
-
-
-SELECT * FROM
-    (SELECT table_name, column_name, data_type, data_length, data_precision, data_scale, nullable, data_default
-    FROM all_tab_columns
-    WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyTable')) tab1
-    INNER JOIN
-    (SELECT column_name, constraint_name, position
-    FROM all_cons_columns
-    WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')) tab2
-    ON tab1.column_name = tab2.column_name
-    INNER JOIN 
-    (SELECT constraint_name, constraint_type, r_constraint_name, delete_rule, generated
-    FROM all_constraints
-    WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
-    AND constraint_type = 'P') tab3
-    ON tab2.constraint_name = tab3.constraint_name;
-
-
-
-SELECT * FROM all_tab_columns 
-WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
-SELECT * from all_constraints 
-WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable'); /
-SELECT *  FROM all_cons_columns 
-WHERE OWNER = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable');   
-
-SELECT constraint_name, constraint_type from all_constraints 
-WHERE owner = 'C##DEVELOPMENT' AND table_name = UPPER('MyChildTable')
-AND NOT REGEXP_LIKE(constraint_name, '^SYS_C\d+');
-
-
-/*ALL_CONSTRAINTS
-ALL_CONS_COLUMNS
-ALL_IDENTIFIERS
-ALL_SEQUENCES
-ALL_TAB_COLS
-ALL_TAB_COLUMNS
-ALL_TAB_COL_STATISTICS*/
 
 
 CREATE OR REPLACE FUNCTION add_outline_constraints_to_table(schema_name VARCHAR2, 
@@ -339,7 +433,6 @@ BEGIN
     RETURN column_defenition;
 END get_column_defenition;
 
-
 CREATE OR REPLACE PROCEDURE check_table_structure(dev_schema_name VARCHAR2,
                                                     prod_schema_name VARCHAR2,
                                                     param_table_name VARCHAR2)
@@ -386,101 +479,9 @@ BEGIN
     END LOOP;
 END check_table_structure;
 
-select * from all_constraints WHERE OWNER = 'C##DEVELOPMENT'; /
-SELECT *  FROM all_cons_columns WHERE OWNER = 'C##DEVELOPMENT';
-
---DROP VIEW parent_child_view;
-CREATE OR REPLACE VIEW parent_child_view AS
-SELECT pk.owner      parent_owner,
-       pk.table_name parent_table,
-       fk.owner      child_owner,
-       fk.table_name child_table
-FROM all_constraints fk,
-     all_constraints pk
-WHERE pk.owner = fk.r_owner
-    AND pk.constraint_name = fk.r_constraint_name
-    AND fk.constraint_type = 'R'
-    AND pk.owner = 'C##DEVELOPMENT';
-
-
-SELECT * FROM 
-    (SELECT pk.owner      parent_owner,
-       pk.table_name parent_table,
-       fk.owner      child_owner,
-       fk.table_name child_table
-FROM all_constraints fk
-INNER JOIN  all_constraints pk
-ON pk.owner = fk.r_owner
-    AND pk.constraint_name = fk.r_constraint_name
-WHERE fk.constraint_type = 'R'
-    AND pk.owner = 'C##DEVELOPMENT');
-
-
-CREATE OR REPLACE PROCEDURE circular_check
-IS
-CURSOR parent_child_cursor IS 
-    SELECT pk.owner parent_owner,
-       pk.table_name parent_table,
-       fk.owner child_owner,
-       fk.table_name child_table
-    FROM all_constraints fk,
-        all_constraints pk
-    WHERE pk.owner = fk.r_owner
-        AND pk.constraint_name = fk.r_constraint_name
-        AND fk.constraint_type = 'R'
-        AND pk.owner = 'C##DEVELOPMENT';
-message VARCHAR2(200);
-BEGIN
-    FOR rec IN parent_child_cursor
-    LOOP
-        message := rec.parent_table || '<-' || rec.child_table;
-        DBMS_OUTPUT.PUT_LINE(recursive_part_circular_check(rec.parent_table, 
-                                                            rec.child_table,
-                                                            message));
-        DBMS_OUTPUT.PUT_LINE(message);
-    END LOOP;
-END circular_check;
-
-
-CREATE OR REPLACE FUNCTION recursive_part_circular_check(start_table VARCHAR2, 
-                                          step_table VARCHAR2,
-                                          message IN OUT VARCHAR2) RETURN NUMBER
-IS
-    check_val VARCHAR2(100);
-BEGIN
-    SELECT child_table INTO check_val FROM parent_child_view 
-    WHERE parent_table = step_table AND ROWNUM = 1;
-    IF start_table = check_val THEN
-        message := message || '<-' || start_table;
-        RETURN 1;
-    ELSE
-        message := message || '<-' || check_val;
-        RETURN recursive_part_circular_check(start_table, check_val, message);
-    END IF;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        --message := 'no cycle';
-        RETURN 0;
-END recursive_part_circular_check;
 
 -------------------------------------------------------
 --CALLABLES SECTION
-
-SELECT * FROM all_procedures
-WHERE owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION';
-
-SELECT * FROM all_objects
-WHERE owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION';
-
-SELECT * FROM all_source
-WHERE owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION';
-
-SELECT * FROM all_identifiers
-WHERE owner = 'C##DEVELOPMENT' 
-OR owner = 'C##PRODUCTION';
 
 CREATE OR REPLACE PROCEDURE add_object(dev_schema_name VARCHAR2,
                                         object_name VARCHAR2,
@@ -561,10 +562,6 @@ BEGIN
     END LOOP;
     RETURN callable_text;
 END get_callable_text;
-
-BEGIN
-    check_callables('C##DEVELOPMENT', 'C##PRODUCTION', 'FUNCTION');
-END;
 
 ----------------------------------------------------
 --PACKAGES SECTION
@@ -805,11 +802,3 @@ BEGIN
         END IF;
     END LOOP;
 END check_indexes;
-
-SELECT *
-FROM all_indexes
-WHERE owner = 'C##DEVELOPMENT'; /
-
-SELECT *
-FROM all_ind_columns
-WHERE index_owner = 'C##DEVELOPMENT';
