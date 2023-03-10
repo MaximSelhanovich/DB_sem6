@@ -1,12 +1,10 @@
 --TODO: CONSTRAINT CHECK
 --TODO: MODIFY COMPARISON OF COLUMS IN TABLE
-SELECT *
-FROM all_indexes
+SELECT * FROM all_indexes
 WHERE owner = 'C##DEVELOPMENT'
-OR owner = 'C##PRODUCTION';
+OR owner = 'C##PRODUCTION'; /
 
-SELECT *
-FROM all_ind_columns
+SELECT * FROM all_ind_columns
 WHERE index_owner = 'C##DEVELOPMENT'
 OR index_owner = 'C##PRODUCTION';
 
@@ -65,12 +63,22 @@ CREATE TABLE TablesToCreate
     cycle_path VARCHAR2(1000)
 );
 
-BEGIN
-    check_tables('c##development', 'c##production');
-    add_all_tables('c##development');
-END;
 
-select * from tablestocreate;
+CREATE OR REPLACE PROCEDURE check_schemas(dev_schema_name VARCHAR2, 
+                                        prod_schema_name VARCHAR2)
+IS
+BEGIN
+    check_tables(dev_schema_name, prod_schema_name);
+    add_all_tables(dev_schema_name);
+    check_callables(dev_schema_name, prod_schema_name, 'FUNCTION');
+    check_callables(dev_schema_name, prod_schema_name, 'PROCEDURE');
+    check_packages(dev_schema_name, prod_schema_name);
+    check_indexes(dev_schema_name, prod_schema_name);
+END check_schemas;
+
+BEGIN
+    check_schemas('C##DEVELOPMENT', 'C##PRODUCTION');
+END;
 
 CREATE OR REPLACE PROCEDURE add_table_info(param_schema_name VARCHAR2)
 IS
@@ -190,7 +198,6 @@ BEGIN
         IF rec.prod_name IS NULL THEN
             INSERT INTO TablesToCreate(owner, name_of_table) 
                 VALUES(dev_schema_name, rec.dev_name);
-            --add_table(dev_schema_name, rec.dev_name, TRUE);
             CONTINUE;
         END IF;
         check_table_structure(dev_schema_name, prod_schema_name, rec.dev_name);
@@ -482,7 +489,6 @@ END check_table_structure;
 
 -------------------------------------------------------
 --CALLABLES SECTION
-
 CREATE OR REPLACE PROCEDURE add_object(dev_schema_name VARCHAR2,
                                         object_name VARCHAR2,
                                         object_type VARCHAR2)
@@ -638,7 +644,7 @@ CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
 IS
 CURSOR get_package_callable_names IS
     SELECT dev_name, dev_type, prod_name, prod_type
-    FROM 
+    FROM
         (SELECT name dev_name, type dev_type FROM all_identifiers 
         WHERE owner = UPPER(dev_schema_name) AND object_type = 'PACKAGE BODY'
         AND type IN ('PROCEDURE', 'FUNCTION') AND usage = 'DEFINITION'
@@ -759,7 +765,8 @@ CURSOR get_indexes IS
         FROM all_indexes ai
         INNER JOIN all_ind_columns aic
         ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
-        WHERE ai.owner = UPPER(dev_schema_name)) dev
+        WHERE ai.owner = UPPER(dev_schema_name)
+        AND NOT REGEXP_LIKE(ai.index_name, '^SYS_C\d+')) dev
     FULL OUTER JOIN
         (SELECT ai.index_name prod_index_name, ai.index_type prod_index_type, 
                 ai.table_name prod_table_name, ai.table_type prod_table_type, 
@@ -768,21 +775,16 @@ CURSOR get_indexes IS
         FROM all_indexes ai
         INNER JOIN all_ind_columns aic
         ON ai.index_name = aic.index_name AND ai.owner = aic.index_owner
-        WHERE ai.owner = UPPER(prod_schema_name)) prod
+        WHERE ai.owner = UPPER(prod_schema_name)
+        AND NOT REGEXP_LIKE(ai.index_name, '^SYS_C\d+')) prod
     ON dev.dev_table_name = prod.prod_table_name 
     AND dev.dev_column_name = prod.prod_column_name;
-
-res_index_name VARCHAR2(200);
 BEGIN
     FOR rec IN get_indexes
     LOOP
         IF rec.prod_index_name IS NULL THEN
-            res_index_name := rec.dev_index_name;
-            IF rec.dev_index_name LIKE 'SYS_%' THEN
-                res_index_name := 'GENERATED_' || rec.dev_index_name;
-            END IF;
             DBMS_OUTPUT.PUT_LINE('CREATE ' || rec.dev_uniqueness 
-                                || ' INDEX ' || res_index_name 
+                                || ' INDEX ' || rec.dev_index_name 
                                 || get_index_string(dev_schema_name, rec.dev_index_name));
             CONTINUE;
         END IF;
