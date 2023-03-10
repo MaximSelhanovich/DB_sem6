@@ -1,4 +1,3 @@
---TODO: CONSTRAINT CHECK
 --TODO: MODIFY COMPARISON OF COLUMS IN TABLE
 SELECT * FROM all_indexes
 WHERE owner = 'C##DEVELOPMENT'
@@ -24,11 +23,11 @@ SELECT * FROM all_identifiers
 WHERE owner = 'C##DEVELOPMENT' 
 OR owner = 'C##PRODUCTION';
 
-select * from all_constraints 
+SELECT * from all_constraints 
 WHERE owner = 'C##DEVELOPMENT'
 OR owner = 'C##PRODUCTION';
 
-SELECT *  FROM all_cons_columns 
+SELECT * FROM all_cons_columns 
 WHERE owner = 'C##DEVELOPMENT'
 OR owner = 'C##PRODUCTION';
 
@@ -54,8 +53,9 @@ CREATE TABLE TablesToCreate
     is_cycle NUMBER DEFAULT 0,
     lvl NUMBER DEFAULT 0,
     fk_name VARCHAR2(200),
-    cycle_path VARCHAR2(1000)
+    cycle_path VARCHAR2(300)
 );
+
 
 CREATE OR REPLACE PROCEDURE add_table(schema_name VARCHAR2, 
                                     param_table_name VARCHAR2,
@@ -386,6 +386,51 @@ BEGIN
     RETURN column_defenition;
 END get_column_defenition;
 
+
+CREATE OR REPLACE PROCEDURE check_table_outline_constraints(dev_schema_name VARCHAR2,
+                                                            prod_schema_name VARCHAR2,
+                                                            param_table_name VARCHAR2)
+IS
+CURSOR get_cons_names IS
+    SELECT * FROM 
+        (SELECT constraint_name dev_name
+        FROM all_constraints
+        WHERE owner = UPPER(dev_schema_name) 
+        AND table_name = UPPER(param_table_name)
+        AND NOT REGEXP_LIKE(constraint_name, '^SYS_C\d+')) dev
+        FULL OUTER JOIN 
+        (SELECT constraint_name prod_name
+        FROM all_constraints
+        WHERE owner = UPPER(prod_schema_name) 
+        AND table_name = UPPER(param_table_name)
+        AND NOT REGEXP_LIKE(constraint_name, '^SYS_C\d+')) prod
+        ON dev.dev_name = prod.prod_name;
+BEGIN
+    FOR rec IN get_cons_names
+    LOOP
+        IF rec.dev_name IS NULL THEN
+            DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
+                                || 'DROP CONSTRAINT ' || rec.prod_name || ';');
+            CONTINUE;
+        END IF;
+        IF rec.prod_name IS NULL THEN
+            DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
+                                || 'ADD ' || get_constraint(dev_schema_name,
+                                                            rec.dev_name) || ';');
+            CONTINUE;
+        END IF;
+        IF get_constraint(dev_schema_name, rec.dev_name) 
+            != get_constraint(prod_schema_name, rec.prod_name) THEN
+            DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
+                                || 'DROP CONSTRAINT ' || rec.prod_name || ';');
+            DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
+                                || 'ADD ' || get_constraint(dev_schema_name,
+                                                            rec.dev_name) || ';');                   
+        END IF;
+    END LOOP;
+END check_table_outline_constraints;
+
+
 CREATE OR REPLACE PROCEDURE check_table_structure(dev_schema_name VARCHAR2,
                                                     prod_schema_name VARCHAR2,
                                                     param_table_name VARCHAR2)
@@ -456,6 +501,7 @@ BEGIN
             CONTINUE;
         END IF;
         check_table_structure(dev_schema_name, prod_schema_name, rec.dev_name);
+        check_table_outline_constraints(dev_schema_name, prod_schema_name, rec.dev_name);
     END LOOP;
 END check_tables;
 
