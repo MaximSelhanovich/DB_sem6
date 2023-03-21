@@ -129,6 +129,10 @@ BEGIN
     END IF;
 END log_groups_changes; /
 
+BEGIN
+    EXECUTE IMMEDIATE 'ALTER TABLE Groups DISABLE ALL TRIGGERS';
+    EXECUTE IMMEDIATE 'ALTER TABLE Groups ENABLE ALL TRIGGERS'; 
+END;
 CREATE OR REPLACE PROCEDURE default_group_restore(restore_group_id NUMBER, time_to_go_back TIMESTAMP) IS
     new_id number(10) := 0;    
 BEGIN

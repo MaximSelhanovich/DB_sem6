@@ -35,7 +35,7 @@ SELECT * FROM all_tab_columns
 WHERE owner = 'C##DEVELOPMENT' 
 AND table_name = UPPER('MyChildTable');
 
-SELECT * from all_constraints 
+SELECT * FROM all_constraints 
 WHERE owner = 'C##DEVELOPMENT' 
 AND table_name = UPPER('MyChildTable');
 
@@ -56,7 +56,7 @@ CREATE TABLE TablesToCreate
     cycle_path VARCHAR2(300)
 );
 
-
+DROP PROCEDURE add_table;
 CREATE OR REPLACE PROCEDURE add_table(schema_name VARCHAR2, 
                                     param_table_name VARCHAR2,
                                     add_fk_constraints BOOLEAN)
@@ -93,6 +93,7 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE(');');
 END add_table;
 
+DROP PROCEDURE add_table_info;
 CREATE OR REPLACE PROCEDURE add_table_info(param_schema_name VARCHAR2)
 IS
 CURSOR get_parent_child_info IS
@@ -132,10 +133,11 @@ BEGIN
     END LOOP;
 END add_table_info;
 
-
+DROP PROCEDURE add_all_tables;
 CREATE OR REPLACE PROCEDURE add_all_tables(schema_name VARCHAR2) IS
 BEGIN
     add_table_info(schema_name);
+    --dbms_output.put_line('-- Put next scripts in PRODUCTION:');
     FOR rec IN (SELECT * FROM tablestocreate ORDER BY lvl)
     LOOP
         add_table(schema_name, rec.name_of_table, rec.is_cycle = 0);
@@ -152,6 +154,7 @@ BEGIN
     EXECUTE IMMEDIATE 'TRUNCATE TABLE TablesToCreate'; 
 END add_all_tables;
 
+DROP FUNCTION get_sequence;
 CREATE OR REPLACE FUNCTION get_sequence(schema_name VARCHAR2, 
                                         param_sequence_name VARCHAR2)
                                         RETURN VARCHAR2
@@ -184,6 +187,7 @@ BEGIN
     RETURN seq_string;
 END get_sequence;
 
+DROP FUNCTION get_foreign_key_constraint;
 CREATE OR REPLACE FUNCTION get_foreign_key_constraint(schema_name VARCHAR2,
                                                     param_constraint_name VARCHAR2)
                                                     RETURN VARCHAR2
@@ -240,7 +244,7 @@ BEGIN
     RETURN cons_string;
 END get_foreign_key_constraint;
 
-
+DROP FUNCTION get_inline_constraints;
 CREATE OR REPLACE FUNCTION get_inline_constraints(schema_name VARCHAR2,
                                                 param_table_name VARCHAR2,
                                                 param_column_name VARCHAR2)
@@ -274,6 +278,7 @@ BEGIN
     RETURN cons_string;
 END get_inline_constraints;
 
+DROP FUNCTION get_constraint;
 CREATE OR REPLACE FUNCTION get_constraint(schema_name VARCHAR2,
                                             param_constraint_name VARCHAR2)
                                             RETURN VARCHAR2
@@ -313,6 +318,7 @@ BEGIN
     RETURN cons_string;
 END get_constraint;
 
+DROP FUNCTION add_outline_constraints_to_table;
 CREATE OR REPLACE FUNCTION add_outline_constraints_to_table(schema_name VARCHAR2, 
                                                             param_table_name VARCHAR2, 
                                                             add_fk_constraints BOOLEAN)
@@ -342,6 +348,7 @@ BEGIN
     RETURN all_cons_string;
 END add_outline_constraints_to_table;
 
+DROP FUNCTION get_column_defenition;
 CREATE OR REPLACE FUNCTION get_column_defenition(schema_name VARCHAR2,
                                                 param_table_name VARCHAR2,
                                                 param_column_name VARCHAR2) 
@@ -386,7 +393,7 @@ BEGIN
     RETURN column_defenition;
 END get_column_defenition;
 
-
+DROP PROCEDURE check_table_outline_constraints;
 CREATE OR REPLACE PROCEDURE check_table_outline_constraints(dev_schema_name VARCHAR2,
                                                             prod_schema_name VARCHAR2,
                                                             param_table_name VARCHAR2)
@@ -409,11 +416,13 @@ BEGIN
     FOR rec IN get_cons_names
     LOOP
         IF rec.dev_name IS NULL THEN
+         
             DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
                                 || 'DROP CONSTRAINT ' || rec.prod_name || ';');
             CONTINUE;
         END IF;
         IF rec.prod_name IS NULL THEN
+            
             DBMS_OUTPUT.PUT_LINE('ALTER TABLE ' || UPPER(param_table_name) || CHR(10)
                                 || 'ADD ' || get_constraint(dev_schema_name,
                                                             rec.dev_name) || ';');
@@ -430,7 +439,7 @@ BEGIN
     END LOOP;
 END check_table_outline_constraints;
 
-
+DROP PROCEDURE check_table_structure;
 CREATE OR REPLACE PROCEDURE check_table_structure(dev_schema_name VARCHAR2,
                                                     prod_schema_name VARCHAR2,
                                                     param_table_name VARCHAR2)
@@ -477,6 +486,7 @@ BEGIN
     END LOOP;
 END check_table_structure;
 
+DROP PROCEDURE check_tables;
 CREATE OR REPLACE PROCEDURE check_tables(dev_schema_name VARCHAR2,
                                         prod_schema_name VARCHAR2)
 IS
@@ -508,6 +518,7 @@ END check_tables;
 
 -------------------------------------------------------
 --CALLABLES SECTION
+DROP PROCEDURE add_object;
 CREATE OR REPLACE PROCEDURE add_object(dev_schema_name VARCHAR2,
                                         object_name VARCHAR2,
                                         object_type VARCHAR2)
@@ -533,6 +544,7 @@ BEGIN
     END LOOP;
 END add_object;
 
+DROP FUNCTION get_callable_text;
 CREATE OR REPLACE FUNCTION get_callable_text(schema_name VARCHAR2,
                                             object_type VARCHAR2,
                                             object_name VARCHAR2) 
@@ -554,6 +566,7 @@ BEGIN
     RETURN callable_text;
 END get_callable_text;
 
+DROP PROCEDURE check_callables;
 CREATE OR REPLACE PROCEDURE check_callables(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2,
                                             param_object_type VARCHAR2)
@@ -593,6 +606,7 @@ END check_callables;
 ----------------------------------------------------
 --PACKAGES SECTION
 --return object from package body as a single string for next comparison
+DROP FUNCTION get_object_from_package;
 CREATE OR REPLACE FUNCTION get_object_from_package(schema_name VARCHAR2,
                                                     package_name VARCHAR2,
                                                     object_type VARCHAR2,
@@ -638,6 +652,7 @@ BEGIN
 END get_object_from_package;
 
 --returns 1 if packages are the same
+DROP FUNCTION is_same_package_bodies;
 CREATE OR REPLACE FUNCTION is_same_package_bodies(dev_schema_name VARCHAR2,
                                                    prod_schema_name VARCHAR2,
                                                    package_body_name VARCHAR2) 
@@ -674,6 +689,7 @@ BEGIN
     RETURN 1;
 END is_same_package_bodies;
 
+DROP PROCEDURE check_package_body;
 CREATE OR REPLACE PROCEDURE check_package_body(dev_schema_name VARCHAR2,
                                                 prod_schema_name VARCHAR2,
                                                 package_name VARCHAR2) IS
@@ -701,8 +717,12 @@ BEGIN
                                     package_name) = 0 THEN
         add_object(dev_schema_name, dev_name, 'PACKAGE BODY');
     END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        NULL;
 END check_package_body;
 
+DROP PROCEDURE check_packages;
 CREATE OR REPLACE PROCEDURE check_packages(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2)
 IS
@@ -742,6 +762,7 @@ END check_packages;
 
 -----------------------------------------------------
 --INDEX SECTIOM
+DROP FUNCTION get_index_string;
 CREATE OR REPLACE FUNCTION get_index_string(schema_name VARCHAR2,
                                             param_index_name VARCHAR2) 
                                             RETURN VARCHAR2
@@ -773,6 +794,7 @@ BEGIN
     RETURN index_string;
 END get_index_string;
 
+DROP PROCEDURE check_indexes;
 CREATE OR REPLACE PROCEDURE check_indexes(dev_schema_name VARCHAR2,
                                             prod_schema_name VARCHAR2)
 IS
@@ -821,16 +843,17 @@ BEGIN
             DBMS_OUTPUT.PUT_LINE('DROP INDEX ' || rec.prod_index_name || ';');
             DBMS_OUTPUT.PUT_LINE('CREATE '|| rec.dev_uniqueness ||' INDEX ' 
                                 || rec.prod_index_name 
-                                || get_index_string(dev_schema_name, rec.dev_index_name) ||';');
+                                || get_index_string(dev_schema_name  , rec.dev_index_name) ||';');
         END IF;
     END LOOP;
 END check_indexes;
 
-
+DROP PROCEDURE check_schemas;
 CREATE OR REPLACE PROCEDURE check_schemas(dev_schema_name VARCHAR2, 
                                         prod_schema_name VARCHAR2)
 IS
 BEGIN
+    dbms_output.put_line('-- Put next scripts in PRODUCTION:');
     check_tables(dev_schema_name, prod_schema_name);
     add_all_tables(dev_schema_name);
     check_callables(dev_schema_name, prod_schema_name, 'FUNCTION');
@@ -838,3 +861,7 @@ BEGIN
     check_packages(dev_schema_name, prod_schema_name);
     check_indexes(dev_schema_name, prod_schema_name);
 END check_schemas;
+
+BEGIN
+    check_schemas('C##DEVELOPMENT', 'C##PRODUCTION');
+END;

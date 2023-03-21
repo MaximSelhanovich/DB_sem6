@@ -7,6 +7,14 @@ DROP TABLE Students; /
 DROP TABLE Groups; /
 DROP TABLE NEWTABLE; /
 
+CREATE TABLE NewToTest
+(
+    id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
+    val_to_index Number
+);
+
+CREATE INDEX int_to_test on NewToTest(val_to_index);
+
 CREATE TABLE MyTable 
 (
     id NUMBER GENERATED ALWAYS as IDENTITY(START with 1 INCREMENT by 1) NOT NULL PRIMARY KEY,
@@ -72,10 +80,6 @@ ALTER TABLE MyChildTable ADD CONSTRAINT fk_mytable_id
         FOREIGN KEY (MyTable_id)
         REFERENCES MyTable(id);
         
-        
-SELECT * FROM all_constraints WHERE OWNER ='C##DEVELOPMENT';
-
-
 -------
 CREATE OR REPLACE PROCEDURE test_name(PAR1 NUMBER, PAR2 VARCHAR2)
 IS
@@ -89,11 +93,7 @@ CREATE OR REPLACE FUNCTION test_name_FUNC(PAR1 NUMBER, PAR2 VARCHAR2) RETURN NUM
 IS
     N BOOLEAN;
 BEGIN
-
-
     NULL;
-    
-    null;
 END test_name_FUNC;
 
 CREATE OR REPLACE PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
@@ -105,49 +105,7 @@ END test_name_PROD;
 --------
 --PACKAGES
 
-
-CREATE OR REPLACE PACKAGE test_dev_package_IN_DEV AS
-    test_dev_package_var NUMBER := 0;
-    PROCEDURE test_dev_package_PROCEDURE;
-    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
-END test_dev_package_IN_DEV;
-
-
-CREATE OR REPLACE PACKAGE test_dev_package AS
-    test_dev_package_var NUMBER := 0;
-    PROCEDURE test_dev_package_PROCEDURE;
-    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER);
-END test_dev_package; /
-
-CREATE 
-OR 
-REPLACE
-PACKAGE 
-BODY 
-
-test_dev_package AS
-    PROCEDURE 
-    test_dev_package_PROCEDURE 
-    IS
-        N BOOLEAN;
-    BEGIN
-        N := TRUE;
-    END test_dev_package_PROCEDURE;
-
-    PROCEDURE test_name_PROD(PAR1 VARCHAR2, PAR2 NUMBER)
-    IS
-        N BOOLEAN;
-    BEGIN
-        N := TRUE;
-    END test_name_PROD;
-    
-    FUNCTION qwe RETURN BOOLEAN IS
-    BEGIN
-        NULL;
-    END qwe;
-END test_dev_package;
-
-
+DROP PACKAGE tpackage;
 CREATE OR REPLACE PACKAGE tpackage AS
     test_dev_package_var NUMBER := 0;
 END tpackage;
@@ -166,6 +124,5 @@ tpackage AS
     BEGIN
         N := TRUE;
     END test_dev_package_PROCEDURE;
-
 END tpackage;
 
