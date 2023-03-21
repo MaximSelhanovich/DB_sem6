@@ -1,0 +1,53 @@
+
+{
+    "select": {
+        "tables": [
+            {"name": "tab_name",
+            "columns": [
+                {"name": "col_name", "alias": "alias"},
+                {"name": "col_name", "alias": "alias"}
+            ]},
+            {"name": "tab_name",
+            "columns": [
+                {"name": "col_name", "alias": "alias"},
+                {"name": "col_name", "alias": "alias"}
+            ]}
+        ],
+        "from": [{"name": "tab_name", "alias": "alias"}, {"name": "tab_name", "alias": "alias"}],
+        "where": {
+            "comment": "/*if where clause consisits from one statement, then no OR|AND bloсk is needed. and|or blocks can be nested*/",
+            "and|or": [
+                {"comment" : "/*comparators: =, <, >, !=, IN, NOT IN, EXISTS, NOT EXISTS*/"},
+                {"comment" : "/*values: simple data type, array: (val1, val2, val3), select block(example below)*/"},
+                {"col_name": {
+                    "comparator": "value"
+                    }
+                },
+                { "and|or": []},
+                {"salary": {
+                        "in": {
+                            "select": {
+                                "tables": [
+                                    {"name": "tab_name",
+                                    "columns": [
+                                        {"name": "col_name", "alias": "alias"},
+                                        {"name": "col_name", "alias": "alias"}
+                                    ]}
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "(INNER|LEFT|RIGHT|FULL) JOIN": {
+            "select|tables blok": {},
+            "on": {
+                "comment": "/*The same nesting rules as in and|or block*/",
+                "col_name|alias": {
+                    "=": "other_col_name|alias"
+                }
+            }
+        }
+    }
+}
