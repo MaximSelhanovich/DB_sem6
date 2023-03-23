@@ -2,20 +2,20 @@
 {
     "select": {
         "tables": [
-            {"name": "tab_name",
+            {"tab_name": "tab1",
             "columns": [
-                {"name": "col_name", "alias": "alias"},
-                {"name": "col_name", "alias": "alias"}
+                {"col_name": "col1_name", "alias": "alias"},
+                {"col_name": "col1_name", "alias": "alias"}
             ]},
-            {"name": "tab_name",
+            {"tab_name": "tab2",
             "columns": [
-                {"name": "col_name", "alias": "alias"},
-                {"name": "col_name", "alias": "alias"}
+                {"col_name": "col1", "alias": "alias"},
+                {"col_name": "col2_name", "alias": "alias"}
             ]}
         ],
-        "from": [{"name": "tab_name", "alias": "alias"}, {"name": "tab_name", "alias": "alias"}],
+        "from": [{"tab_name": "tab1", "alias": "alias"}, {"tab_name": "tab2", "alias": "alias"}],
         "where": {
-            "comment": "/*if where clause consisits from one statement, then no OR|AND bloсk is needed. and|or blocks can be nested*/",
+            "comment": "/*if where clause consisits from one statement, then no OR|AND block is needed. and|or blocks can be nested*/",
             "and|or": [
                 {"comment" : "/*comparators: =, <, >, !=, IN, NOT IN, EXISTS, NOT EXISTS*/"},
                 {"comment" : "/*values: simple data type, array: (val1, val2, val3), select block(example below)*/"},
@@ -28,10 +28,10 @@
                         "in": {
                             "select": {
                                 "tables": [
-                                    {"name": "tab_name",
+                                    {"tab_name": "tab_name",
                                     "columns": [
-                                        {"name": "col_name", "alias": "alias"},
-                                        {"name": "col_name", "alias": "alias"}
+                                        {"col_ame": "col_name", "alias": "alias"},
+                                        {"col_name": "col_name", "alias": "alias"}
                                     ]}
                                 ]
                             }
