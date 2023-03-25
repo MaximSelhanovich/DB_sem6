@@ -33,10 +33,25 @@
                                         {"col_ame": "col_name", "alias": "alias"},
                                         {"col_name": "col_name", "alias": "alias"}
                                     ]}
-                                ]
+                                ],
+                                "from": [{}, {}],
+                                "where":{
+                                    "and|or": [
+                                        {
+                                            "id": {
+                                                ">": 5
+                                            }
+                                        },
+                                        {
+                                            "id": {
+                                                "<": 10
+                                            }
+                                        }
+                                    ]
+                                }
                             }
                         }
-                    }
+                    }  
                 }
             ]
         },
