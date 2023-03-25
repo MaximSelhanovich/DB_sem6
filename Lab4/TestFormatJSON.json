@@ -1,4 +1,3 @@
-
 {
     "select": {
         "tables": [
@@ -31,14 +30,14 @@
                     "col_name": "gsa",
                     "comparator": "in",
                     "value": {
-                            "select": {
-                                "tables": [
-                                    {"tab_name": "tab_name",
-                                    "columns": [
-                                        {"col_ame": "col_name", "alias": "alias"},
-                                        {"col_name": "col_name", "alias": "alias"}
-                                    ]}
-                                ],
+                        "select": {
+                            "tables": [
+                                {"tab_name": "tab1",
+                                "columns": [
+                                    {"col_name": "col1_name", "alias": "alias"},
+                                    {"col_name": "col1_name", "alias": "alias"}
+                                ]}
+                            ],
                                 "from": [{}, {}],
                                 "where":{
                                     "and|or": [

@@ -37,6 +37,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN RTRIM(res_str, ',');
     END parse_name_section;
     
+    
     FUNCTION parse_table_section(json_query_string JSON_ARRAY_T)
                                                     RETURN VARCHAR2
     IS
@@ -62,6 +63,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN RTRIM(res_str, ',');
     END parse_table_section;
     
+    
     FUNCTION parse_scalar_array(json_query_string JSON_ARRAY_T) RETURN VARCHAR2
     IS
         res_str VARCHAR2(300) := '(';
@@ -78,6 +80,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         
         RETURN RTRIM(res_str, ', ') || ')';
     END parse_scalar_array;
+    
     
     FUNCTION parse_simple_condition(json_query_string JSON_OBJECT_T)
                                                         RETURN VARCHAR2
@@ -102,19 +105,28 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN res_str;
     END parse_simple_condition;
     
+    
     FUNCTION parse_compound_conditions(json_query_string JSON_ARRAY_T,
                                         join_condition VARCHAR2)
                                         RETURN VARCHAR2
     IS
+        buff_json_object JSON_OBJECT_T;
+        res_str VARCHAR2(1000) := '(';
     BEGIN
-        RETURN 'DFGHB';
+        FOR i IN 0..json_query_string.get_size - 1
+        LOOP
+            buff_json_object := TREAT(json_query_string.get(i) AS JSON_OBJECT_T);
+            res_str := res_str || parse_where_section(buff_json_object) 
+                                || ' ' || join_condition || ' ';
+        END LOOP;
+        RETURN RTRIM(res_str, join_condition || ' ') || ')';
     END parse_compound_conditions;
+    
     
     FUNCTION parse_where_section(json_query_string JSON_OBJECT_T)
                                                     RETURN VARCHAR2
     IS
     BEGIN
-        DBMS_OUTPUT.PUT_LINE('IN WHERE');
         IF json_query_string.has('or') THEN
             RETURN parse_compound_conditions(TREAT(json_query_string.get('or') AS JSON_ARRAY_T), 'OR');
         ELSIF json_query_string.has('and') THEN
@@ -124,26 +136,28 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         ELSE
             RAISE_APPLICATION_ERROR(-20004, 'There is no "comparison" in "where" section');
         END IF;
-        RETURN 'NICE';
+        RETURN NULL;
     END parse_where_section;
+    
     
     FUNCTION parse_select(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
+        buff_json_object JSON_OBJECT_T := TREAT(json_query_string.get('select') AS JSON_OBJECT_T);
         res_str VARCHAR2(32000) := 'SELECT';
     BEGIN
-        IF NOT json_query_string.has('tables') THEN
+        IF NOT buff_json_object.has('tables') THEN
             RAISE_APPLICATION_ERROR(-20002, 'There is now "tables" section');
         END IF;
         res_str := res_str || 
-            parse_table_section(TREAT(json_query_string.get('tables') AS JSON_ARRAY_T));
-        IF NOT json_query_string.has('from') THEN
+            parse_table_section(TREAT(buff_json_object.get('tables') AS JSON_ARRAY_T));
+        IF NOT buff_json_object.has('from') THEN
             RAISE_APPLICATION_ERROR(-20003, 'There is now "from" section');
         END IF;
         res_str := res_str || ' FROM' 
-                || parse_name_section(TREAT(json_query_string.get('from') AS JSON_ARRAY_T), 'tab_name');
-        IF json_query_string.has('where') THEN
+                || parse_name_section(TREAT(buff_json_object.get('from') AS JSON_ARRAY_T), 'tab_name');
+        IF buff_json_object.has('where') THEN
             res_str := res_str || ' WHERE ' 
-                || parse_where_section(TREAT(json_query_string.get('where') AS JSON_OBJECT_T));
+                || parse_where_section(TREAT(buff_json_object.get('where') AS JSON_OBJECT_T));
         END IF;
         RETURN res_str;
     END parse_select;
@@ -153,7 +167,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     IS
     BEGIN
         IF json_query_string.has('select') THEN
-            RETURN parse_select(TREAT(json_query_string.get('select') AS JSON_OBJECT_T));
+            RETURN parse_select(json_query_string);
         END IF;
         RETURN NULL;
     END parse_JSON_to_SQL;
@@ -177,10 +191,7 @@ DECLARE
         ],
         "from": [{"tab_name": "tab1", "alias": "alias"}, {"tab_name": "tab2", "alias": "alias"}],
         "where": {
-            "comment": "/*if where clause consisits from one statement, then no OR|AND block is needed. and|or blocks can be nested*/",
             "and": [
-                {"comment" : "/*comparators: =, <, >, !=, IN, NOT IN, EXISTS, NOT EXISTS*/"},
-                {"comment" : "/*values: simple data type, array: (val1, val2, val3), select block(example below)*/"},
                 {"comparison": {
                     "tab_name": "tab1",
                     "col_name": "col_to_compare",
@@ -193,17 +204,17 @@ DECLARE
                     "col_name": "gsa",
                     "comparator": "in",
                     "value": {
-                            "select": {
-                                "tables": [
-                                    {"tab_name": "tab_name",
-                                    "columns": [
-                                        {"col_ame": "col_name", "alias": "alias"},
-                                        {"col_name": "col_name", "alias": "alias"}
-                                    ]}
-                                ],
+                        "select": {
+                            "tables": [
+                                {"tab_name": "tab1",
+                                "columns": [
+                                    {"col_name": "col1_name", "alias": "alias"},
+                                    {"col_name": "col1_name", "alias": "alias"}
+                                ]}
+                            ],
                                 "from": [{}, {}],
                                 "where":{
-                                    "and": [
+                                    "or": [
                                         {"comparison": {
                                             "tab_name": "tqbbb",
                                             "col_name": "col_to_compare_in1",
