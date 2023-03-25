@@ -19,13 +19,18 @@
             "and|or": [
                 {"comment" : "/*comparators: =, <, >, !=, IN, NOT IN, EXISTS, NOT EXISTS*/"},
                 {"comment" : "/*values: simple data type, array: (val1, val2, val3), select block(example below)*/"},
-                {"col_name": {
-                    "comparator": "value"
+                {"comparison": {
+                    "tab_name": "tab1",
+                    "col_name": "col_to_compare",
+                    "comparator": ">",
+                    "value": 5
                     }
                 },
-                { "and|or": []},
-                {"salary": {
-                        "in": {
+                {"comparison": {
+                    "tab_name": "tab2",
+                    "col_name": "gsa",
+                    "comparator": "in",
+                    "value": {
                             "select": {
                                 "tables": [
                                     {"tab_name": "tab_name",
@@ -37,14 +42,18 @@
                                 "from": [{}, {}],
                                 "where":{
                                     "and|or": [
-                                        {
-                                            "id": {
-                                                ">": 5
+                                        {"comparison": {
+                                            "tab_name": "tqbbb",
+                                            "col_name": "col_to_compare_in1",
+                                            "comparator": ">",
+                                            "value": 15
                                             }
                                         },
-                                        {
-                                            "id": {
-                                                "<": 10
+                                        {"comparison": {
+                                            "tab_name": "dhst",
+                                            "col_name": "col_to_compare_in2",
+                                            "comparator": "<",
+                                            "value": 15
                                             }
                                         }
                                     ]
@@ -55,12 +64,16 @@
                 }
             ]
         },
-        "(INNER|LEFT|RIGHT|FULL) JOIN": {
+        "join": {
+            "join_type": "inner",
             "select|tables blok": {},
             "on": {
                 "comment": "/*The same nesting rules as in and|or block*/",
-                "col_name|alias": {
-                    "=": "other_col_name|alias"
+                "comparison": {
+                    "tab_name": "tab1",
+                    "col_name": "col_to_compare",
+                    "comparator": ">",
+                    "value": 5
                 }
             }
         }
