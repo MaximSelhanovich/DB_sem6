@@ -71,8 +71,8 @@
                 "comparison": {
                         "tab_name": "tab1",
                         "col_name": "col_to_compare",
-                        "comparator": ">",
-                        "value": 5
+                        "comparator": "=",
+                        "value": {"tab_name": "tda", "col_name": "coclco"}
                     }    
                 }
             },

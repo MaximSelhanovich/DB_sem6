@@ -1,0 +1,9 @@
+{
+    "DML": {
+        "type": "insert|update|delete",
+        "tab_name": "tab1",
+        "columns": ["col1", "col2", "col3"],
+        "values": [],
+        "where": {}
+    }
+}
