@@ -63,18 +63,30 @@
                 }
             ]
         },
-        "join": {
-            "join_type": "inner",
-            "select|tables blok": {},
+        "join": [
+            {"join_type": "inner",
+            "select": {},
             "on": {
                 "comment": "/*The same nesting rules as in and|or block*/",
                 "comparison": {
-                    "tab_name": "tab1",
-                    "col_name": "col_to_compare",
-                    "comparator": ">",
-                    "value": 5
+                        "tab_name": "tab1",
+                        "col_name": "col_to_compare",
+                        "comparator": ">",
+                        "value": 5
+                    }    
+                }
+            },
+            {"join_type": "full outer",
+            "table": {"tab_name": "tab1", "alias": "alias"},
+            "on": {
+                "comparison": {
+                        "tab_name": "tab1",
+                        "col_name": "col_to_compare",
+                        "comparator": ">",
+                        "value": 5
+                    }    
                 }
             }
-        }
+        ]
     }
 }

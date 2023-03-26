@@ -55,7 +55,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             buff_json_object := TREAT(json_query_string.get(i) AS JSON_OBJECT_T);
             table_name := buff_json_object.get_String('tab_name');
             res_str := res_str 
-                    || parse_name_section(TREAT(buff_json_object.get('columns')AS JSON_ARRAY_T), 
+                    || parse_name_section(TREAT(buff_json_object.get('columns') AS JSON_ARRAY_T), 
                                             'col_name', table_name)
                     || ',';
     
@@ -73,7 +73,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         LOOP
             buff_json_element := json_query_string.get(i);
             IF NOT buff_json_element.is_scalar THEN
-                RAISE_APPLICATION_ERROR(-20005, 'Not scalar element was found in supposed scalar array ');
+                RAISE_APPLICATION_ERROR(-20005, 'Not scalar element was found in supposed scalar array');
             END IF;
             res_str := res_str || buff_json_element.to_string || ', '; 
         END LOOP;
@@ -90,7 +90,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     BEGIN
         res_str := json_query_string.get_string('tab_name') || '.'  
                     || json_query_string.get_string('col_name') || ' ' 
-                    || json_query_string.get_string('comparator');
+                    || UPPER(json_query_string.get_string('comparator'));
         buff_json_element := json_query_string.get('value');      
         IF buff_json_element.is_scalar THEN
             res_str := res_str || ' ' || buff_json_element.to_string;
@@ -100,7 +100,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             IF NOT TREAT(buff_json_element AS JSON_OBJECT_T).has('select') THEN
                 RAISE_APPLICATION_ERROR(-20006, 'Not supported value in comparison');
             END IF;
-            res_str := res_str || ' (' || parse_select(TREAT(buff_json_element AS JSON_OBJECT_T)) || ')';
+            res_str := res_str || ' (' || parse_select(TREAT(buff_json_element AS JSON_OBJECT_T).get_object('select')) || ')';
         END IF;
         RETURN res_str;
     END parse_simple_condition;
@@ -123,8 +123,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     END parse_compound_conditions;
     
     
-    FUNCTION parse_where_section(json_query_string JSON_OBJECT_T)
-                                                    RETURN VARCHAR2
+    FUNCTION parse_where_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
     BEGIN
         IF json_query_string.has('or') THEN
@@ -140,24 +139,54 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     END parse_where_section;
     
     
+    FUNCTION parse_join_section(json_query_string JSON_ARRAY_T) RETURN VARCHAR2
+    IS
+        buff_json_object JSON_OBJECT_T;
+        jo JSON_OBJECT_T;
+        res_str VARCHAR2(2000);
+    BEGIN
+        FOR i IN 0..json_query_string.get_size - 1
+        LOOP
+            dbms_output.put_line('in join parsee');
+            buff_json_object := TREAT(json_query_string.get(i) AS JSON_OBJECT_T);
+            res_str := res_str || ' '
+                    || UPPER(buff_json_object.get_string('join_type')) || ' JOIN ';
+            IF buff_json_object.has('select') THEN
+                res_str := res_str || '(' || parse_select(buff_json_object) || ')';
+            ELSIF buff_json_object.has('table') THEN
+                jo := buff_json_object.get_object('table');
+                res_str := res_str || jo.get_string('tab_name') || ' ' || jo.get_string('alias');
+            ELSE
+                RAISE_APPLICATION_ERROR(-20008, 'There is no necessary join parameter in "join" section');
+            END IF;
+            res_str := res_str || ' ON ' 
+                        || parse_where_section(buff_json_object.get_object('on'));
+        END LOOP;
+        RETURN res_str;
+    END parse_join_section;
+    
     FUNCTION parse_select(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
-        buff_json_object JSON_OBJECT_T := TREAT(json_query_string.get('select') AS JSON_OBJECT_T);
+        --buff_json_object JSON_OBJECT_T := TREAT(json_query_string.get('select') AS JSON_OBJECT_T);
         res_str VARCHAR2(32000) := 'SELECT';
     BEGIN
-        IF NOT buff_json_object.has('tables') THEN
+        IF NOT json_query_string.has('tables') THEN
             RAISE_APPLICATION_ERROR(-20002, 'There is now "tables" section');
         END IF;
         res_str := res_str || 
-            parse_table_section(TREAT(buff_json_object.get('tables') AS JSON_ARRAY_T));
-        IF NOT buff_json_object.has('from') THEN
+            parse_table_section(json_query_string.get_array('tables'));
+        IF NOT json_query_string.has('from') THEN
             RAISE_APPLICATION_ERROR(-20003, 'There is now "from" section');
         END IF;
         res_str := res_str || ' FROM' 
-                || parse_name_section(TREAT(buff_json_object.get('from') AS JSON_ARRAY_T), 'tab_name');
-        IF buff_json_object.has('where') THEN
+                || parse_name_section(json_query_string.get_array('from'), 'tab_name');
+        IF json_query_string.has('where') THEN
             res_str := res_str || ' WHERE ' 
-                || parse_where_section(TREAT(buff_json_object.get('where') AS JSON_OBJECT_T));
+                || parse_where_section(json_query_string.get_object('where'));
+        END IF;
+        IF json_query_string.has('join') THEN
+            res_str := res_str
+                || parse_join_section(json_query_string.get_array('join'));
         END IF;
         RETURN res_str;
     END parse_select;
@@ -167,7 +196,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     IS
     BEGIN
         IF json_query_string.has('select') THEN
-            RETURN parse_select(json_query_string);
+            RETURN parse_select(json_query_string.get_object('select'));
         END IF;
         RETURN NULL;
     END parse_JSON_to_SQL;
@@ -237,19 +266,31 @@ DECLARE
                 }
             ]
         },
-        "join": {
-            "join_type": "inner",
-            "select|tables blok": {},
+        "join": [
+            {"join_type": "full outer",
+            "table": {"tab_name": "tab1", "alias": "alias"},
+            "on": {
+                "comparison": {
+                        "tab_name": "tab1",
+                        "col_name": "col_to_compare",
+                        "comparator": ">",
+                        "value": 5
+                    }    
+                }
+            },
+            {"join_type": "inner",
+            "select": {},
             "on": {
                 "comment": "/*The same nesting rules as in and|or block*/",
                 "comparison": {
-                    "tab_name": "tab1",
-                    "col_name": "col_to_compare",
-                    "comparator": ">",
-                    "value": 5
+                        "tab_name": "tab1",
+                        "col_name": "col_to_compare",
+                        "comparator": ">",
+                        "value": 5
+                    }    
                 }
             }
-        }
+        ]
     }
 }';
   je JSON_ELEMENT_T;
