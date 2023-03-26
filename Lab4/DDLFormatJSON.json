@@ -1,5 +1,27 @@
 {
     "DDL": {
-        "type": ""
+        "type": "delete|create",
+        "tab_name": "abacaba",
+        "columns": [
+            {
+                "col_name": "col1",
+                "data_type": "data_type",
+                "inline_constraints": ["", "", ""]
+            },
+            {
+                "col_name": "col2",
+                "data_type": "data2",
+                "inline_constraints": ["", "", ""]
+            }
+        ],
+        "outline_constraints": [
+            {
+                "cons_name": "cons_name",
+                "cons_type": "C|P|U|R",
+                "columns": ["", "", ""],
+                "ref_tab_name": "tab",
+                "ref_columns": ["", "", ""]
+            }
+        ]
     }
 }

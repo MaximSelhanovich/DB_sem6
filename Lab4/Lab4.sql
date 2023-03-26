@@ -1,26 +1,36 @@
 CREATE OR REPLACE PACKAGE json_parser AS
     ----------
     ---SELECT section
-    FUNCTION parse_name_section(json_query_string JSON_ARRAY_T,
-                                search_name VARCHAR2,
+    FUNCTION parse_name_section(json_query_string JSON_ARRAY_T, search_name VARCHAR2,
                                 table_name VARCHAR2 DEFAULT NULL)
                                 RETURN VARCHAR2;
     FUNCTION parse_table_section(json_query_string JSON_ARRAY_T) RETURN VARCHAR2;
     FUNCTION parse_scalar_array(json_query_string JSON_ARRAY_T) RETURN VARCHAR2;
     FUNCTION parse_select(json_query_string JSON_OBJECT_T) RETURN VARCHAR2;
     FUNCTION condition_checker(json_query_string JSON_OBJECT_T, 
-                                is_join_condidtion BOOLEAN DEFAULT FALSE) 
+                                is_in_join_segment BOOLEAN DEFAULT FALSE) 
                                 RETURN VARCHAR2;
     FUNCTION parse_where_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2;
     FUNCTION parse_compound_conditions(json_query_string JSON_ARRAY_T,
                                         join_condition VARCHAR2,
-                                        is_join_condidtion BOOLEAN DEFAULT FALSE)
+                                        is_in_join_segment BOOLEAN DEFAULT FALSE)
                                         RETURN VARCHAR2;
     FUNCTION parse_join_section(json_query_string JSON_ARRAY_T) RETURN VARCHAR2;
-    ---------
-    --DML section
+--------------------------
+--DML section
+     FUNCTION parse_values_as_array(json_columns JSON_ARRAY_T, 
+                                    json_values JSON_ARRAY_T,
+                                    new_val_type NUMBER) RETURN VARCHAR2;
+    FUNCTION parse_values_as_select(json_columns JSON_ARRAY_T, 
+                                    json_values JSON_OBJECT_T,
+                                    new_val_type NUMBER) RETURN VARCHAR2;
+    FUNCTION parse_new_values_section(json_columns JSON_ARRAY_T, 
+                                    json_values JSON_ELEMENT_T,
+                                    new_val_type NUMBER) RETURN VARCHAR2;
+    FUNCTION parse_dml_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2;
     FUNCTION parse_JSON_to_SQL(json_query_string JSON_OBJECT_T) RETURN VARCHAR2;
 END json_parser;
+
 
 CREATE OR REPLACE PACKAGE BODY json_parser AS
 -----------------------
@@ -93,7 +103,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     
     
     FUNCTION parse_simple_condition(json_query_string JSON_OBJECT_T,
-                                    is_join_condidtion BOOLEAN DEFAULT FALSE)
+                                    is_in_join_segment BOOLEAN DEFAULT FALSE)
                                                         RETURN VARCHAR2
     IS
         res_str VARCHAR2(300);
@@ -102,13 +112,13 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     BEGIN
         res_str := json_query_string.get_string('tab_name') || '.'  
                     || json_query_string.get_string('col_name') || ' ';
-        IF is_join_condidtion AND json_query_string.get_string('comparator') != '=' THEN
+        IF is_in_join_segment AND json_query_string.get_string('comparator') != '=' THEN
             RAISE_APPLICATION_ERROR(-20009, 'Unexpected value (' 
                 || json_query_string.get_string('comparator') || ') expected (=) in "join section"');
         END IF;
         res_str := res_str || UPPER(json_query_string.get_string('comparator'));
         buff_json_element := json_query_string.get('value'); 
-        IF is_join_condidtion THEN
+        IF is_in_join_segment THEN
             buff_json_object := TREAT(buff_json_element AS JSON_OBJECT_T);
             res_str := res_str || buff_json_object.get_string('tab_name') 
                         || '.' || buff_json_object.get_string('col_name');
@@ -129,7 +139,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     
     FUNCTION parse_compound_conditions(json_query_string JSON_ARRAY_T,
                                         join_condition VARCHAR2,
-                                        is_join_condidtion BOOLEAN DEFAULT FALSE)
+                                        is_in_join_segment BOOLEAN DEFAULT FALSE)
                                         RETURN VARCHAR2
     IS
         buff_json_object JSON_OBJECT_T;
@@ -138,23 +148,24 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         FOR i IN 0..json_query_string.get_size - 1
         LOOP
             buff_json_object := TREAT(json_query_string.get(i) AS JSON_OBJECT_T);
-            res_str := res_str || condition_checker(buff_json_object, is_join_condidtion) 
+            res_str := res_str || condition_checker(buff_json_object, is_in_join_segment) 
                                 || ' ' || join_condition || ' ';
         END LOOP;
         RETURN RTRIM(res_str, join_condition || ' ') || ')';
     END parse_compound_conditions;
     
+    
     FUNCTION condition_checker(json_query_string JSON_OBJECT_T, 
-                                is_join_condidtion BOOLEAN DEFAULT FALSE) 
+                                is_in_join_segment BOOLEAN DEFAULT FALSE) 
                                 RETURN VARCHAR2
     IS
     BEGIN
         IF json_query_string.has('or') THEN
-            RETURN parse_compound_conditions(json_query_string.get_array('or'), 'OR', is_join_condidtion);
+            RETURN parse_compound_conditions(json_query_string.get_array('or'), 'OR', is_in_join_segment);
         ELSIF json_query_string.has('and') THEN
-            RETURN parse_compound_conditions(json_query_string.get_array('and'), 'AND', is_join_condidtion);
+            RETURN parse_compound_conditions(json_query_string.get_array('and'), 'AND', is_in_join_segment);
         ELSIF json_query_string.has('comparison') THEN
-            RETURN parse_simple_condition(json_query_string.get_object('comparison'), is_join_condidtion);
+            RETURN parse_simple_condition(json_query_string.get_object('comparison'), is_in_join_segment);
         ELSE
             RAISE_APPLICATION_ERROR(-20004, 'There is no "comparison" in "where" section');
         END IF;   
@@ -193,15 +204,16 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN res_str;
     END parse_join_section;
     
+    
     FUNCTION parse_group_by_section(json_query_string JSON_ARRAY_T) RETURN VARCHAR2
     IS
     BEGIN
         RETURN NULL;
     END parse_group_by_section;
     
+    
     FUNCTION parse_select(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
-        --buff_json_object JSON_OBJECT_T := TREAT(json_query_string.get('select') AS JSON_OBJECT_T);
         res_str VARCHAR2(32000) := 'SELECT';
     BEGIN
         IF NOT json_query_string.has('tables') THEN
@@ -230,7 +242,8 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
     END parse_select;
 --------------------------
 --DML section
-     FUNCTION parse_values_as_array(json_columns JSON_ARRAY_T, 
+    -- 0 == INSERT; 1 == UPDATE
+    FUNCTION parse_values_as_array(json_columns JSON_ARRAY_T, 
                                     json_values JSON_ARRAY_T,
                                     new_val_type NUMBER) RETURN VARCHAR2
     IS
@@ -242,7 +255,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         END IF;
         IF new_val_type = 0 THEN
             RETURN parse_scalar_array(json_columns) || CHR(10) 
-                    ||'VALUES' || CHR(10) || parse_scalar_array(json_values);
+                    || 'VALUES' || CHR(10) || parse_scalar_array(json_values);
         ELSE
             FOR i IN 0..json_columns.get_size - 1
             LOOP
@@ -253,21 +266,23 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN res_str;
     END parse_values_as_array;
 
-
+    -- 0 == INSERT; 1 == UPDATE
     FUNCTION parse_values_as_select(json_columns JSON_ARRAY_T, 
                                     json_values JSON_OBJECT_T,
                                     new_val_type NUMBER) RETURN VARCHAR2
     IS
     BEGIN
         IF NOT json_values.has('select') THEN
-            RAISE_APPLICATION_ERROR(-20012, 'Mismatched value in "DML": ("select") not found)');
+            RAISE_APPLICATION_ERROR(-20012, 'Mismatched value in "DML": 
+                                            ("select") not found)');
         END IF;
         IF new_val_type = 0 THEN
             RETURN parse_scalar_array(json_columns) 
                     || CHR(10) || '(' || parse_select(json_values) || ')';
         ELSE
             IF json_columns.get_size != 1 THEN
-                RAISE_APPLICATION_ERROR(-20014, 'Mismatched value in "update": MUST be one column for "select"');
+                RAISE_APPLICATION_ERROR(-20014, 'Mismatched value in "update": 
+                                                MUST be one column for "select"');
             END IF;
             RETURN json_columns.get_string(0) || ' = ' || '(' || parse_select(json_values) || ')';
         END IF;
@@ -431,22 +446,4 @@ BEGIN
     je := JSON_ELEMENT_T.parse(json_query_param);
     jo := TREAT(je AS JSON_OBJECT_T);
     DBMS_OUTPUT.PUT_LINE(json_parser.parse_JSON_to_SQL(TREAT(jo AS JSON_OBJECT_T)));
-END;
-
-DECLARE
-  je JSON_ELEMENT_T;
-  jo JSON_OBJECT_T;
-BEGIN
-  je := JSON_ELEMENT_T.parse('{"tab_name": "tab1",
-            "columns": [
-                {"col_name": "col1_name", "alias": "alias"},
-                {"col_name": "col1_name", "alias": "alias"}
-            ]}');
-    jo := treat(je AS JSON_OBJECT_T);
-  --IF (je.is_Object) THEN
-    --jo.put('price', 149.99);
-  --END IF;
-    IF jE.is_OBJECT THEN
-        DBMS_OUTPUT.put_line('STRING IS ');
-    END IF;
 END;
