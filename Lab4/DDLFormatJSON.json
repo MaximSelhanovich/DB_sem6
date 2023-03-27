@@ -1,6 +1,6 @@
 {
     "DDL": {
-        "type": "delete|create",
+        "type": "drop|create",
         "tab_name": "abacaba",
         "columns": [
             {
@@ -19,8 +19,17 @@
                 "cons_name": "cons_name",
                 "cons_type": "C|P|U|R",
                 "columns": ["", "", ""],
-                "ref_tab_name": "tab",
-                "ref_columns": ["", "", ""]
+                "comparison": {
+                    "comment": "/*only for CHECK*/",
+                    "comparator": "<",
+                    "value": 15
+                    }
+                ,   
+                "reference": {
+                    "comment": "/*only for FOREIGN KEY*/",
+                    "tab_name": "tab",
+                    "columns": ["", "", ""]
+                }
             }
         ]
     }

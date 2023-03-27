@@ -98,7 +98,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             res_str := res_str || buff_json_element.to_string || ', '; 
         END LOOP;
         
-        RETURN RTRIM(res_str, ', ') || ')';
+        RETURN REGEXP_REPLACE(RTRIM(res_str, ', ') || ')', '"', '' || CHR(39));
     END parse_scalar_array;
     
     
@@ -109,31 +109,39 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         res_str VARCHAR2(300);
         buff_json_element JSON_ELEMENT_T;
         buff_json_object JSON_OBJECT_T;
+        res_tab_name VARCHAR2(51);
     BEGIN
-        res_str := json_query_string.get_string('tab_name') || '.'  
-                    || json_query_string.get_string('col_name') || ' ';
+        IF json_query_string.has('tab_name') THEN
+            res_tab_name := json_query_string.get_string('tab_name') || '.';
+        END IF;
+    
+        res_str := res_tab_name || json_query_string.get_string('col_name') || ' ';
+                    
         IF is_in_join_segment AND json_query_string.get_string('comparator') != '=' THEN
             RAISE_APPLICATION_ERROR(-20009, 'Unexpected value (' 
                 || json_query_string.get_string('comparator') || ') expected (=) in "join section"');
         END IF;
+        
         res_str := res_str || UPPER(json_query_string.get_string('comparator'));
         buff_json_element := json_query_string.get('value'); 
+        
         IF is_in_join_segment THEN
             buff_json_object := TREAT(buff_json_element AS JSON_OBJECT_T);
-            res_str := res_str || buff_json_object.get_string('tab_name') 
-                        || '.' || buff_json_object.get_string('col_name');
+            res_str := res_str || res_tab_name || buff_json_object.get_string('col_name');
         ELSIF buff_json_element.is_scalar THEN
             res_str := res_str || ' ' || buff_json_element.to_string;
         ELSIF buff_json_element.is_array THEN
             res_str := res_str || ' ' || parse_scalar_array(TREAT(buff_json_element AS JSON_ARRAY_T));
         ELSE
-        buff_json_object := TREAT(buff_json_element AS JSON_OBJECT_T);
+            buff_json_object := TREAT(buff_json_element AS JSON_OBJECT_T);
+        
             IF NOT buff_json_object.has('select') THEN
                 RAISE_APPLICATION_ERROR(-20006, 'Not supported value in comparison');
             END IF;
+            
             res_str := res_str || ' (' || parse_select(buff_json_object.get_object('select')) || ')';
         END IF;
-        RETURN res_str;
+        RETURN REPLACE(res_str, '"', '' || CHR(39));
     END parse_simple_condition;
     
     
@@ -335,6 +343,130 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         END IF;
         RETURN res_str;
     END parse_dml_section; 
+---------------------
+--DDL
+    FUNCTION get_full_cons_name(short_cons_name VARCHAR2) RETURN VARCHAR2
+    IS
+    BEGIN
+        RETURN CASE UPPER(short_cons_name)
+                    WHEN 'P' THEN 'PRIMARY KEY'
+                    WHEN 'U' THEN 'UNIQUE'
+                    WHEN 'C' THEN 'CHECK'
+                    WHEN 'R' THEN 'FOREIGN KEY'
+                    ELSE NULL
+                END;
+    END get_full_cons_name;
+    
+    
+    FUNCTION parse_check_constraint(json_columns JSON_ARRAY_T, 
+                                    json_check_constraint JSON_OBJECT_T) 
+                                    RETURN VARCHAR2
+    IS
+        buff_json_object JSON_OBJECT_T;
+    BEGIN
+        IF json_columns.get_size != 1 THEN
+            RAISE_APPLICATION_ERROR(-20020, 'Wrong input in DDL: 
+                "CHECK" expects (1) column name, got (' ||json_columns.get_size || ')');
+        END IF;
+            buff_json_object := json_check_constraint;
+            buff_json_object.put('col_name', json_check_constraint.get_string(0));
+        RETURN '(' || parse_simple_condition(buff_json_object) || ')';
+    END parse_check_constraint;
+    
+    
+    FUNCTION parse_foreign_key_constraint(json_columns JSON_ARRAY_T, 
+                                        json_reference JSON_OBJECT_T) 
+                                        RETURN VARCHAR2
+    IS
+        buff_json_array JSON_ARRAY_T;
+    BEGIN
+        buff_json_array := json_reference.get_array('columns');
+        IF buff_json_array.get_size != json_columns.get_size THEN
+            RAISE_APPLICATION_ERROR(-20021, 'Wrong input in DDL: 
+                "FOREIGN KEY" expects the same column number. Got source(' 
+                || json_columns.get_size || '), reference(' || buff_json_array.get_size || ')');           
+        END IF;
+        RETURN parse_scalar_array(json_columns) || CHR(10)
+        || 'REFERENCES ' || json_reference.get_string('tab_name') 
+        || parse_scalar_array(buff_json_array);
+    END parse_foreign_key_constraint;
+    
+    
+    FUNCTION parse_outline_constraints_section(json_constraints JSON_ARRAY_T) 
+                                                RETURN VARCHAR2
+    IS
+        res_str VARCHAR2(500);
+        buff_str VARCHAR2(20);
+        buff_json_object JSON_OBJECT_T;
+    BEGIN
+        FOR i IN 0..json_constraints.get_size - 1
+        LOOP
+            buff_json_object := TREAT(json_constraints.get(i) AS JSON_OBJECT_T);
+            res_str := res_str || 'CONSTRAINT ' || buff_json_object.get_string('cons_name');
+            buff_str := get_full_cons_name(buff_json_object.get_string('cons_type'));
+            IF buff_str IS NULL THEN
+                RAISE_APPLICATION_ERROR(-20019, 'Unsupported "cons_type" parameter in DDL');
+            END IF;
+            
+            IF buff_str = 'CHECK' THEN
+                res_str := res_str || parse_check_constraint(buff_json_object.get_array('columns'), 
+                                                        buff_json_object.get_object('comparison')) || ',';
+            ELSIF buff_str = 'FOREIGN KEY' THEN
+                res_str := res_str 
+                    || parse_foreign_key_constraint(buff_json_object.get_array('columns'), 
+                                                    buff_json_object.get_object('reference')) || ',';
+            END IF;
+            res_str := res_str || ' ' || buff_str 
+                    || parse_scalar_array(buff_json_object.get_array('columns')) || ',';            
+        END LOOP;
+        RETURN RTRIM(res_str, ',');
+    END parse_outline_constraints_section;
+
+    FUNCTION parse_create_section(json_columns JSON_ARRAY_T, 
+                                    json_constraints JSON_ARRAY_T) RETURN VARCHAR2
+    IS
+        res_str VARCHAR2(500);
+    BEGIN
+        FOR i IN 0..json_columns.get_size - 1
+        LOOP
+            res_str := res_str || json_columns.get_string('col_name') || ' ' 
+                || json_columns.get_string('data_type') || ' ' 
+                || REGEXP_REPLACE(parse_scalar_array(TREAT(json_columns.get('data_type') AS JSON_ARRAY_T)),
+                                '\(|,|\)|"', '')
+                || ',' || CHR(10);          
+        END LOOP;
+        res_str := res_str || parse_outline_constraints_section(json_constraints);
+        
+        RETURN RTRIM(res_str, ',');
+    END parse_create_section;
+                                    
+                                    
+    FUNCTION parse_ddl_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
+    IS
+        res_str VARCHAR2(1000);
+    BEGIN
+        IF NOT json_query_string.has('type') THEN
+            RAISE_APPLICATION_ERROR(-20016, 'There is no necessary "type" parameter in DDL');
+        END IF;
+        IF NOT json_query_string.has('tab_name') THEN
+            RAISE_APPLICATION_ERROR(-20017, 'There is no necessary "tab_name" parameter in DDL');
+        END IF;
+        
+        res_str := UPPER(json_query_string.get_string('type')) || ' TABLE ' 
+                        || json_query_string.get_string('tab_name');
+        
+        IF res_str LIKE 'DROP%' THEN
+            RETURN res_str;
+        ELSIF res_str LIKE 'CREATE%' THEN
+            NULL;
+        ELSE
+            RAISE_APPLICATION_ERROR(-20018, 'Unsupported "type" parameter in DDL');
+        END IF;
+        res_str := res_str || CHR(10) 
+                || '(' || parse_create_section(json_query_string.get_array('columns'),
+                                                json_query_string.get_array('outline_constraints')) || ')';
+        RETURN res_str;
+    END parse_ddl_section;
     
     
     FUNCTION parse_JSON_to_SQL(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
@@ -348,6 +480,11 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         RETURN NULL;
     END parse_JSON_to_SQL;
 END json_parser;
+
+
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(REGEXP_REPLACE(json_parser.parse_scalar_array(JSON_ARRAY_T.parse('["asd", "zxc"]')), '\(|,|\)', ''));
+END;
 
 
 DECLARE
