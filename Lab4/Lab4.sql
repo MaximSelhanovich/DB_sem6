@@ -356,8 +356,8 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
                     ELSE NULL
                 END;
     END get_full_cons_name;
-    
-    
+
+
     FUNCTION parse_check_constraint(json_columns JSON_ARRAY_T, 
                                     json_check_constraint JSON_OBJECT_T) 
                                     RETURN VARCHAR2
@@ -411,36 +411,65 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             IF buff_str = 'CHECK' THEN
                 res_str := res_str || parse_check_constraint(buff_json_object.get_array('columns'), 
                                                         buff_json_object.get_object('comparison')) || ',';
+                CONTINUE;
             ELSIF buff_str = 'FOREIGN KEY' THEN
                 res_str := res_str 
                     || parse_foreign_key_constraint(buff_json_object.get_array('columns'), 
                                                     buff_json_object.get_object('reference')) || ',';
+                CONTINUE;
             END IF;
             res_str := res_str || ' ' || buff_str 
                     || parse_scalar_array(buff_json_object.get_array('columns')) || ',';            
         END LOOP;
         RETURN RTRIM(res_str, ',');
     END parse_outline_constraints_section;
+    
+    
+    PROCEDURE create_auto_increment_trigger(tab_name VARCHAR2, col_name VARCHAR2)
+    IS
+        seq_str VARCHAR2(100);
+        trigger_str VARCHAR2(300);
+    BEGIN
+        seq_str := 'CREATE SEQUENCE ' || tab_name || '_' || col_name || '_seq START WITH 1';
+        trigger_str := 'CREATE OR REPLACE TRIGGER ' || tab_name || '_' || col_name || '_auto' 
+        || CHR(10) || 'BEFORE INSERT ON' || tab_name || CHR(10) || 'FOR EACH ROW' 
+        || CHR(10) || 'BEGIN' || CHR(10) 
+        || 'select '|| tab_name || '_' || col_name || '_seq.nextval into :NEW.' 
+        || col_name || 'from dual;' || CHR(10) || 'END '|| tab_name || '_' || col_name || '_auto';
+    END create_auto_increment_trigger;
+    
 
-    FUNCTION parse_create_section(json_columns JSON_ARRAY_T, 
+    FUNCTION parse_create_section(tab_name VARCHAR2, json_columns JSON_ARRAY_T, 
                                     json_constraints JSON_ARRAY_T) RETURN VARCHAR2
     IS
+        buff_json_object JSON_OBJECT_T;
+        buff_json_array JSON_ARRAY_T;
         res_str VARCHAR2(500);
+        buff_str VARCHAR2(100);
     BEGIN
         FOR i IN 0..json_columns.get_size - 1
         LOOP
-            res_str := res_str || json_columns.get_string('col_name') || ' ' 
-                || json_columns.get_string('data_type') || ' ' 
-                || REGEXP_REPLACE(parse_scalar_array(TREAT(json_columns.get('data_type') AS JSON_ARRAY_T)),
-                                '\(|,|\)|"', '')
-                || ',' || CHR(10);          
+            buff_json_object := TREAT(json_columns.get(i) AS JSON_OBJECT_T);
+            res_str := res_str || buff_json_object.get_string('col_name') || ' ' 
+                || buff_json_object.get_string('data_type') || ' '; 
+            buff_json_array := TREAT(buff_json_object.get('inline_constraints') AS JSON_ARRAY_T);
+            FOR j IN 0..buff_json_array.get_size - 1
+            LOOP
+                IF buff_json_array.get_string(j) = 'PRIMARY KEY' 
+                    AND REGEXP_LIKE(buff_json_object.get_string('data_type'), '^NUMBER*', 'i')  
+                THEN
+                    create_auto_increment_trigger(tab_name, buff_json_object.get_string('col_name'));
+                END IF;
+                res_str := res_str || buff_json_array.get_string(j) || ' ';
+            END LOOP;
+            res_str := res_str || ',';
         END LOOP;
         res_str := res_str || parse_outline_constraints_section(json_constraints);
         
         RETURN RTRIM(res_str, ',');
     END parse_create_section;
-                                    
-                                    
+    
+                    
     FUNCTION parse_ddl_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
         res_str VARCHAR2(1000);
@@ -463,7 +492,8 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             RAISE_APPLICATION_ERROR(-20018, 'Unsupported "type" parameter in DDL');
         END IF;
         res_str := res_str || CHR(10) 
-                || '(' || parse_create_section(json_query_string.get_array('columns'),
+                || '(' || parse_create_section(json_query_string.get_string('tab_name'),
+                                                json_query_string.get_array('columns'),
                                                 json_query_string.get_array('outline_constraints')) || ')';
         RETURN res_str;
     END parse_ddl_section;
@@ -476,6 +506,10 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             RETURN parse_select(json_query_string.get_object('select'));
         ELSIF json_query_string.has('DML') THEN
             RETURN parse_dml_section(json_query_string.get_object('DML'));
+        ELSIF json_query_string.has('DDL') THEN
+            RETURN parse_ddl_section(json_query_string.get_object('DDL'));
+        ELSE
+            RAISE_APPLICATION_ERROR(-20000, 'Unsupported script type');
         END IF;
         RETURN NULL;
     END parse_JSON_to_SQL;
