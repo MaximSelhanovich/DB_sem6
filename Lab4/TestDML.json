@@ -1,0 +1,8 @@
+{
+    "DML": {
+        "type": "insert",
+        "tab_name": "tab1",
+        "columns": ["col1", "col2", "col3"],
+        "values": [123, "asd", 5.6]
+    }
+}

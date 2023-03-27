@@ -33,6 +33,7 @@ END json_parser;
 
 
 CREATE OR REPLACE PACKAGE BODY json_parser AS
+    
 -----------------------
 --SELECT section
     FUNCTION parse_name_section(json_query_string JSON_ARRAY_T, search_name VARCHAR2,
@@ -98,7 +99,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             res_str := res_str || buff_json_element.to_string || ', '; 
         END LOOP;
         
-        RETURN REGEXP_REPLACE(RTRIM(res_str, ', ') || ')', '"', '' || CHR(39));
+        RETURN REPLACE(RTRIM(res_str, ', ') || ')', '"', '' || CHR(39));
     END parse_scalar_array;
     
     
@@ -262,13 +263,13 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
                 || json_columns.get_size || '), values(' || json_values.get_size || ')');
         END IF;
         IF new_val_type = 0 THEN
-            RETURN parse_scalar_array(json_columns) || CHR(10) 
+            RETURN REPLACE(parse_scalar_array(json_columns), '' || CHR(39), '') || CHR(10) 
                     || 'VALUES' || CHR(10) || parse_scalar_array(json_values);
         ELSE
             FOR i IN 0..json_columns.get_size - 1
             LOOP
                 res_str := res_str || json_columns.get_string(i) 
-                        || ' = ' || json_values.get_string(i) || CHR(10);
+                        || ' = ' || json_values.get_string(i) || ',' || CHR(10);
             END LOOP;
         END IF;
         RETURN res_str;
@@ -324,11 +325,12 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         dml_type := json_query_string.get_string('type');
         res_str := CASE UPPER(dml_type)
                         WHEN 'INSERT' THEN
-                            'INSERT INTO ' || json_query_string.get_string('tab_name') 
+                            'INSERT INTO ' || json_query_string.get_string('tab_name') || CHR(10)
                             || parse_new_values_section(json_query_string.get_array('columns'), 
                                                         json_query_string.get('values'), 0)
                         WHEN 'UPDATE' THEN
                             'UPDATE ' || json_query_string.get_string('tab_name') 
+                            || 'SET' || CHR(10)
                             || parse_new_values_section(json_query_string.get_array('columns'), 
                                                         json_query_string.get('values'), 1)
                         WHEN 'DELETE' THEN 
@@ -386,9 +388,9 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
                 "FOREIGN KEY" expects the same column number. Got source(' 
                 || json_columns.get_size || '), reference(' || buff_json_array.get_size || ')');           
         END IF;
-        RETURN parse_scalar_array(json_columns) || CHR(10)
+        RETURN REPLACE(parse_scalar_array(json_columns), '' || CHR(39), '') || CHR(10)
         || 'REFERENCES ' || json_reference.get_string('tab_name') 
-        || parse_scalar_array(buff_json_array);
+        || REPLACE(parse_scalar_array(buff_json_array), '' || CHR(39), '');
     END parse_foreign_key_constraint;
     
     
@@ -439,7 +441,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         || CHR(10) || 'BEFORE INSERT ON' || tab_name || CHR(10) || 'FOR EACH ROW' 
         || CHR(10) || 'BEGIN' || CHR(10) 
         || 'select '|| tab_name || '_' || col_name || '_seq.nextval into :NEW.' 
-        || col_name || 'from dual;' || CHR(10) || 'END '|| tab_name || '_' || col_name || '_auto';
+        || col_name || ' from dual;' || CHR(10) || 'END '|| tab_name || '_' || col_name || '_auto';
         DBMS_OUTPUT.PUT_LINE(trigger_str);
     END create_auto_increment_trigger;
     
@@ -532,49 +534,26 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
 END json_parser;
 
 
-DECLARE
-    json_query_param VARCHAR2(32000) :=  '{
-    "DDL": {
-        "type": "create",
-        "tab_name": "abacaba",
-        "columns": [
-            {
-                "col_name": "id",
-                "data_type": "number",
-                "inline_constraints": ["FOREIGN KEY", "NOT NULL"]
-            },
-            {
-                "col_name": "NAME",
-                "data_type": "VARCHAR2(50)",
-                "inline_constraints": ["NOT NULL"]
-            }
-        ],
-        "outline_constraints": [
-            {
-                "cons_name": "CON111111",
-                "cons_type": "C",
-                "columns": ["ID"],
-                "comparison": {
-                    "comparator": "<",
-                    "value": 15
-                    }
-            },
-            {
-                "cons_name": "FOREIGHGHGHGH",
-                "cons_type": "R",
-                "columns": ["COL1", "COL2", "COL3"],  
-                "reference": {
-                    "tab_name": "tab123",
-                    "columns": ["ASD", "ZXC", "QWE"]
-                }
-            }
-        ]
-    }
-}';
-  je JSON_ELEMENT_T;
-  jo JSON_OBJECT_T;
+CREATE OR REPLACE DIRECTORY READ_DIR AS 'D:\Study\Third_Grade\6_sem\DB\LR\Lab4';
+CREATE OR REPLACE FUNCTION read_from_file(dir VARCHAR2, file_name VARCHAR2) RETURN VARCHAR2
+IS
+    file_obj UTL_FILE.FILE_TYPE;
+    buff_str VARCHAR2(300);
+    res_str VARCHAR2(32000);
 BEGIN
-    je := JSON_ELEMENT_T.parse(json_query_param);
-    jo := TREAT(je AS JSON_OBJECT_T);
-    DBMS_OUTPUT.PUT_LINE(json_parser.parse_JSON_to_SQL(TREAT(jo AS JSON_OBJECT_T)));
+    file_obj := UTL_FILE.FOPEN(dir, file_name, 'R', 32000);
+    LOOP
+        BEGIN
+            UTL_FILE.GET_LINE(file_obj, buff_str);
+            res_str := res_str || buff_str;
+        EXCEPTION WHEN OTHERS THEN EXIT;
+        END;
+    END LOOP;
+    UTL_FILE.FCLOSE(file_obj);
+    RETURN res_str;
+END read_from_file;
+
+
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(json_parser.parse_JSON_to_SQL(JSON_OBJECT_T(read_from_file('READ_DIR', 'TestDML.json'))));
 END;

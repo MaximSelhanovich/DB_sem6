@@ -1,16 +1,16 @@
 {
     "DDL": {
         "type": "drop|create",
-        "tab_name": "abacaba",
+        "tab_name": "tab_name",
         "columns": [
             {
-                "col_name": "col1",
-                "data_type": "number",
+                "col_name": "col_name1",
+                "data_type": "data_type1",
                 "inline_constraints": ["", "", ""]
             },
             {
-                "col_name": "col2",
-                "data_type": "data2",
+                "col_name": "col_name2",
+                "data_type": "data_type2",
                 "inline_constraints": ["", "", ""]
             }
         ],
@@ -22,7 +22,7 @@
                 "comparison": {
                     "comment": "/*only for CHECK*/",
                     "comparator": "<",
-                    "value": 15
+                    "value": "value"
                     }
                 ,   
                 "reference": {
