@@ -114,9 +114,9 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         IF json_query_string.has('tab_name') THEN
             res_tab_name := json_query_string.get_string('tab_name') || '.';
         END IF;
-    
+
         res_str := res_tab_name || json_query_string.get_string('col_name') || ' ';
-                    
+ 
         IF is_in_join_segment AND json_query_string.get_string('comparator') != '=' THEN
             RAISE_APPLICATION_ERROR(-20009, 'Unexpected value (' 
                 || json_query_string.get_string('comparator') || ') expected (=) in "join section"');
@@ -143,8 +143,8 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         END IF;
         RETURN REPLACE(res_str, '"', '' || CHR(39));
     END parse_simple_condition;
-    
-    
+
+
     FUNCTION parse_compound_conditions(json_query_string JSON_ARRAY_T,
                                         join_condition VARCHAR2,
                                         is_in_join_segment BOOLEAN DEFAULT FALSE)
@@ -161,8 +161,8 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         END LOOP;
         RETURN RTRIM(res_str, join_condition || ' ') || ')';
     END parse_compound_conditions;
-    
-    
+
+
     FUNCTION condition_checker(json_query_string JSON_OBJECT_T, 
                                 is_in_join_segment BOOLEAN DEFAULT FALSE) 
                                 RETURN VARCHAR2
@@ -178,14 +178,15 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             RAISE_APPLICATION_ERROR(-20004, 'There is no "comparison" in "where" section');
         END IF;   
     END condition_checker;
-    
+
+
     FUNCTION parse_where_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
     BEGIN
         RETURN condition_checker(json_query_string);
     END parse_where_section;
-    
-    
+
+
     FUNCTION parse_join_section(json_query_string JSON_ARRAY_T) RETURN VARCHAR2
     IS
         buff_json_object JSON_OBJECT_T;
@@ -198,7 +199,6 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             res_str := res_str || ' '
                     || UPPER(buff_json_object.get_string('join_type')) || ' JOIN ';
             IF buff_json_object.has('select') THEN
-                continue;
                 res_str := res_str || '(' || parse_select(buff_json_object) || ')';
             ELSIF buff_json_object.has('table') THEN
                 jo := buff_json_object.get_object('table');
@@ -369,7 +369,7 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
                 "CHECK" expects (1) column name, got (' ||json_columns.get_size || ')');
         END IF;
             buff_json_object := json_check_constraint;
-            buff_json_object.put('col_name', json_check_constraint.get_string(0));
+            buff_json_object.put('col_name', json_columns.get_string(0));
         RETURN '(' || parse_simple_condition(buff_json_object) || ')';
     END parse_check_constraint;
     
@@ -402,45 +402,51 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         FOR i IN 0..json_constraints.get_size - 1
         LOOP
             buff_json_object := TREAT(json_constraints.get(i) AS JSON_OBJECT_T);
-            res_str := res_str || 'CONSTRAINT ' || buff_json_object.get_string('cons_name');
+            res_str := res_str || 'CONSTRAINT ' || buff_json_object.get_string('cons_name') || ' ';
             buff_str := get_full_cons_name(buff_json_object.get_string('cons_type'));
+            
             IF buff_str IS NULL THEN
                 RAISE_APPLICATION_ERROR(-20019, 'Unsupported "cons_type" parameter in DDL');
             END IF;
             
+            res_str := res_str || buff_str;
             IF buff_str = 'CHECK' THEN
-                res_str := res_str || parse_check_constraint(buff_json_object.get_array('columns'), 
-                                                        buff_json_object.get_object('comparison')) || ',';
+                res_str := res_str
+                    || parse_check_constraint(buff_json_object.get_array('columns'), 
+                                                buff_json_object.get_object('comparison')) || ',' || CHR(10);
                 CONTINUE;
             ELSIF buff_str = 'FOREIGN KEY' THEN
-                res_str := res_str 
+                res_str := res_str
                     || parse_foreign_key_constraint(buff_json_object.get_array('columns'), 
-                                                    buff_json_object.get_object('reference')) || ',';
+                                                    buff_json_object.get_object('reference')) || ',' || CHR(10);
                 CONTINUE;
             END IF;
             res_str := res_str || ' ' || buff_str 
-                    || parse_scalar_array(buff_json_object.get_array('columns')) || ',';            
+                    || parse_scalar_array(buff_json_object.get_array('columns')) || ',' || CHR(10);            
         END LOOP;
-        RETURN RTRIM(res_str, ',');
+        RETURN RTRIM(res_str, ',' || CHR(10));
     END parse_outline_constraints_section;
-    
-    
+
+
     PROCEDURE create_auto_increment_trigger(tab_name VARCHAR2, col_name VARCHAR2)
     IS
         seq_str VARCHAR2(100);
         trigger_str VARCHAR2(300);
     BEGIN
         seq_str := 'CREATE SEQUENCE ' || tab_name || '_' || col_name || '_seq START WITH 1';
+        DBMS_OUTPUT.PUT_LINE(seq_str);
         trigger_str := 'CREATE OR REPLACE TRIGGER ' || tab_name || '_' || col_name || '_auto' 
         || CHR(10) || 'BEFORE INSERT ON' || tab_name || CHR(10) || 'FOR EACH ROW' 
         || CHR(10) || 'BEGIN' || CHR(10) 
         || 'select '|| tab_name || '_' || col_name || '_seq.nextval into :NEW.' 
         || col_name || 'from dual;' || CHR(10) || 'END '|| tab_name || '_' || col_name || '_auto';
+        DBMS_OUTPUT.PUT_LINE(trigger_str);
     END create_auto_increment_trigger;
     
 
-    FUNCTION parse_create_section(tab_name VARCHAR2, json_columns JSON_ARRAY_T, 
-                                    json_constraints JSON_ARRAY_T) RETURN VARCHAR2
+    FUNCTION parse_create_section(tab_name VARCHAR2, 
+                                    json_columns JSON_ARRAY_T, 
+                                    json_constraints JSON_ARRAY_T DEFAULT NULL) RETURN VARCHAR2
     IS
         buff_json_object JSON_OBJECT_T;
         buff_json_array JSON_ARRAY_T;
@@ -450,29 +456,33 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         FOR i IN 0..json_columns.get_size - 1
         LOOP
             buff_json_object := TREAT(json_columns.get(i) AS JSON_OBJECT_T);
+            
             res_str := res_str || buff_json_object.get_string('col_name') || ' ' 
-                || buff_json_object.get_string('data_type') || ' '; 
+                || buff_json_object.get_string('data_type') || ' ';
+                
             buff_json_array := TREAT(buff_json_object.get('inline_constraints') AS JSON_ARRAY_T);
             FOR j IN 0..buff_json_array.get_size - 1
             LOOP
-                IF buff_json_array.get_string(j) = 'PRIMARY KEY' 
+                IF buff_json_array.get_string(j) = 'FOREIGN KEY' 
                     AND REGEXP_LIKE(buff_json_object.get_string('data_type'), '^NUMBER*', 'i')  
                 THEN
                     create_auto_increment_trigger(tab_name, buff_json_object.get_string('col_name'));
                 END IF;
                 res_str := res_str || buff_json_array.get_string(j) || ' ';
             END LOOP;
-            res_str := res_str || ',';
+            res_str := RTRIM(res_str, ' ') || ',' || CHR(10);
         END LOOP;
-        res_str := res_str || parse_outline_constraints_section(json_constraints);
-        
+        IF json_constraints IS NOT NULL THEN 
+            res_str := res_str || parse_outline_constraints_section(json_constraints);
+        END IF;
         RETURN RTRIM(res_str, ',');
     END parse_create_section;
     
-                    
+  
     FUNCTION parse_ddl_section(json_query_string JSON_OBJECT_T) RETURN VARCHAR2
     IS
         res_str VARCHAR2(1000);
+        buff_json_array JSON_ARRAY_T := NULL;
     BEGIN
         IF NOT json_query_string.has('type') THEN
             RAISE_APPLICATION_ERROR(-20016, 'There is no necessary "type" parameter in DDL');
@@ -484,6 +494,11 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
         res_str := UPPER(json_query_string.get_string('type')) || ' TABLE ' 
                         || json_query_string.get_string('tab_name');
         
+        
+        IF json_query_string.has('outline_constraints') THEN
+            buff_json_array := json_query_string.get_array('outline_constraints');
+        END IF;
+        
         IF res_str LIKE 'DROP%' THEN
             RETURN res_str;
         ELSIF res_str LIKE 'CREATE%' THEN
@@ -492,9 +507,10 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
             RAISE_APPLICATION_ERROR(-20018, 'Unsupported "type" parameter in DDL');
         END IF;
         res_str := res_str || CHR(10) 
-                || '(' || parse_create_section(json_query_string.get_string('tab_name'),
-                                                json_query_string.get_array('columns'),
-                                                json_query_string.get_array('outline_constraints')) || ')';
+                || '(' || CHR(10) 
+                || parse_create_section(json_query_string.get_string('tab_name'),
+                                        json_query_string.get_array('columns'),
+                                        buff_json_array) || CHR(10) || ')';
         RETURN res_str;
     END parse_ddl_section;
     
@@ -516,96 +532,40 @@ CREATE OR REPLACE PACKAGE BODY json_parser AS
 END json_parser;
 
 
-BEGIN
-    DBMS_OUTPUT.PUT_LINE(REGEXP_REPLACE(json_parser.parse_scalar_array(JSON_ARRAY_T.parse('["asd", "zxc"]')), '\(|,|\)', ''));
-END;
-
-
 DECLARE
     json_query_param VARCHAR2(32000) :=  '{
-    "select": {
-        "tables": [
-            {"tab_name": "tab1",
-            "columns": [
-                {"col_name": "col1_name", "alias": "alias"},
-                {"col_name": "col1_name", "alias": "alias"}
-            ]},
-            {"tab_name": "tab2",
-            "columns": [
-                {"col_name": "col1", "alias": "alias"},
-                {"col_name": "col2_name", "alias": "alias"}
-            ]}
-        ],
-        "from": [{"tab_name": "tab1", "alias": "alias"}, {"tab_name": "tab2", "alias": "alias"}],
-        "where": {
-            "and": [
-                {"comparison": {
-                    "tab_name": "tab1",
-                    "col_name": "col_to_compare",
-                    "comparator": ">",
-                    "value": 5
-                    }
-                },
-                {"comparison": {
-                    "tab_name": "tab2",
-                    "col_name": "gsa",
-                    "comparator": "in",
-                    "value": {
-                        "select": {
-                            "tables": [
-                                {"tab_name": "tab1",
-                                "columns": [
-                                    {"col_name": "col1_name", "alias": "alias"},
-                                    {"col_name": "col1_name", "alias": "alias"}
-                                ]}
-                            ],
-                                "from": [{}, {}],
-                                "where":{
-                                    "or": [
-                                        {"comparison": {
-                                            "tab_name": "tqbbb",
-                                            "col_name": "col_to_compare_in1",
-                                            "comparator": ">",
-                                            "value": 15
-                                            }
-                                        },
-                                        {"comparison": {
-                                            "tab_name": "dhst",
-                                            "col_name": "col_to_compare_in2",
-                                            "comparator": "<",
-                                            "value": 25
-                                            }
-                                        }
-                                    ]
-                                }
-                            }
-                        }
-                    }  
-                }
-            ]
-        },
-        "join": [
-            {"join_type": "full outer",
-            "table": {"tab_name": "tab1", "alias": "alias"},
-            "on": {
-                "comparison": {
-                        "tab_name": "tab1",
-                        "col_name": "col_to_compare",
-                        "comparator": "=",
-                        "value": {"tab_name": "tda", "col_name": "coclco"}
-                    }    
-                }
+    "DDL": {
+        "type": "create",
+        "tab_name": "abacaba",
+        "columns": [
+            {
+                "col_name": "id",
+                "data_type": "number",
+                "inline_constraints": ["FOREIGN KEY", "NOT NULL"]
             },
-            {"join_type": "inner",
-            "select": {},
-            "on": {
-                "comment": "/*The same nesting rules as in and|or block*/",
+            {
+                "col_name": "NAME",
+                "data_type": "VARCHAR2(50)",
+                "inline_constraints": ["NOT NULL"]
+            }
+        ],
+        "outline_constraints": [
+            {
+                "cons_name": "CON111111",
+                "cons_type": "C",
+                "columns": ["ID"],
                 "comparison": {
-                        "tab_name": "tab1",
-                        "col_name": "col_to_compare",
-                        "comparator": ">",
-                        "value": 5
-                    }    
+                    "comparator": "<",
+                    "value": 15
+                    }
+            },
+            {
+                "cons_name": "FOREIGHGHGHGH",
+                "cons_type": "R",
+                "columns": ["COL1", "COL2", "COL3"],  
+                "reference": {
+                    "tab_name": "tab123",
+                    "columns": ["ASD", "ZXC", "QWE"]
                 }
             }
         ]

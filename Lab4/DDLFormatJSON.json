@@ -5,7 +5,7 @@
         "columns": [
             {
                 "col_name": "col1",
-                "data_type": "data_type",
+                "data_type": "number",
                 "inline_constraints": ["", "", ""]
             },
             {
