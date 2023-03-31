@@ -50,6 +50,7 @@ CREATE TABLE Customers_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
+    display NUMBER(1) DEFAULT 0,
     customer_id NUMBER NOT NULL,
     old_name VARCHAR2(100),
     old_surname VARCHAR2(100),
@@ -62,6 +63,7 @@ CREATE TABLE Products_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
+    display NUMBER(1) DEFAULT 0,
     product_id NUMBER NOT NULL,
     old_name VARCHAR2(100),
     old_price NUMBER(10, 2),
@@ -74,6 +76,7 @@ CREATE TABLE Orders_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
+    display NUMBER(1) DEFAULT 0,
     order_id NUMBER NOT NULL,
     old_date_of_purchase TIMESTAMP,
     old_customer_id NUMBER,
@@ -86,6 +89,7 @@ CREATE TABLE product_order_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
+    display NUMBER(1) DEFAULT 0,
     product_order_id NUMBER NOT NULL,
     old_product_id NUMBER,
     old_order_id NUMBER,
@@ -107,13 +111,13 @@ DECLARE
 BEGIN
     IF INSERTING THEN
         INSERT INTO Customers_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :NEW.id, NULL, NULL, :NEW.name, :NEW.surname);       
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :NEW.id, NULL, NULL, :NEW.name, :NEW.surname);       
     ELSIF UPDATING THEN
         INSERT INTO Customers_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.name, :OLD.surname, :NEW.name, :NEW.surname);
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.name, :OLD.surname, :NEW.name, :NEW.surname);
     ELSE
         INSERT INTO Customers_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.name, :OLD.surname, NULL, NULL);    
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.name, :OLD.surname, NULL, NULL);    
     END IF;
 END log_customers_changes;
 
@@ -130,13 +134,13 @@ DECLARE
 BEGIN
     IF INSERTING THEN
         INSERT INTO Products_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :NEW.id, NULL, NULL, :NEW.name, :NEW.price);       
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :NEW.id, NULL, NULL, :NEW.name, :NEW.price);       
     ELSIF UPDATING THEN
         INSERT INTO Products_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.name, :OLD.price, :NEW.name, :NEW.price);
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.name, :OLD.price, :NEW.name, :NEW.price);
     ELSE
         INSERT INTO Products_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.name, :OLD.price, NULL, NULL);    
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.name, :OLD.price, NULL, NULL);    
     END IF;
 END log_products_changes;
 
@@ -153,14 +157,16 @@ DECLARE
 BEGIN
     IF INSERTING THEN
         INSERT INTO Orders_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :NEW.id, NULL, NULL, :NEW.date_of_purchase, :NEW.customer_id);       
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :NEW.id, NULL, NULL, 
+                                                    :NEW.date_of_purchase, :NEW.customer_id);       
     ELSIF UPDATING THEN
         INSERT INTO Orders_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.date_of_purchase, :OLD.customer_id, 
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.date_of_purchase, :OLD.customer_id, 
                                                 :NEW.date_of_purchase, :NEW.customer_id);
     ELSE
         INSERT INTO Orders_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.date_of_purchase, :OLD.customer_id, NULL, NULL);    
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.date_of_purchase, :OLD.customer_id, 
+                                                NULL, NULL);    
     END IF;
 END log_orders_changes;
 
@@ -177,14 +183,16 @@ DECLARE
 BEGIN
     IF INSERTING THEN
         INSERT INTO product_order_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :NEW.id, NULL, NULL, NULL, :NEW.product_id, :NEW.order_id, :NEW.quantity);       
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :NEW.id, NULL, NULL, NULL, 
+                                        :NEW.product_id, :NEW.order_id, :NEW.quantity);       
     ELSIF UPDATING THEN
         INSERT INTO product_order_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.product_id, :OLD.order_id, :OLD.quantity,
-                                                :NEW.product_id, :NEW.order_id, :NEW.quantity);
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.product_id, :OLD.order_id, :OLD.quantity,
+                                                    :NEW.product_id, :NEW.order_id, :NEW.quantity);
     ELSE
         INSERT INTO product_order_logs VALUES
-        (DEFAULT, SYSTIMESTAMP, op_type, :OLD.id, :OLD.product_id, :OLD.order_id, :OLD.quantity, NULL, NULL, NULL);    
+        (DEFAULT, SYSTIMESTAMP, op_type, DEFAULT, :OLD.id, :OLD.product_id, :OLD.order_id, :OLD.quantity, 
+                                                NULL, NULL, NULL);    
     END IF;
 END log_product_order_changes;
 
@@ -201,6 +209,7 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER TABLE Customers MODIFY id GENERATED BY DEFAULT AS IDENTITY';
     FOR rec IN logs
     LOOP
+        UPDATE Customers_logs SET display = 0 WHERE id = rec.id;
         IF rec.operation_type = 'U' THEN
             UPDATE Customers
             SET name = rec.old_name,
@@ -215,7 +224,6 @@ BEGIN
         END IF;
     END LOOP;
     SELECT NVL(MAX(ID), 0) + 1 INTO new_id FROM Customers;
-    DBMS_OUTPUT.PUT_LINE(new_id);
     EXECUTE IMMEDIATE 'ALTER TABLE Customers MODIFY id GENERATED ALWAYS AS IDENTITY(START WITH ' 
         || new_id || ' INCREMENT BY 1)';
     EXECUTE IMMEDIATE 'ALTER TABLE Customers ENABLE ALL TRIGGERS';
@@ -235,6 +243,7 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER TABLE Products MODIFY id GENERATED BY DEFAULT AS IDENTITY';
     FOR rec IN logs
     LOOP
+        UPDATE Products_logs SET display = 0 WHERE id = rec.id;
         IF rec.operation_type = 'U' THEN
             UPDATE Products
             SET name = rec.old_name,
@@ -267,6 +276,7 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER TABLE Orders MODIFY id GENERATED BY DEFAULT AS IDENTITY';
     FOR rec IN logs
     LOOP
+        UPDATE Orders_logs SET display = 0 WHERE id = rec.id;
         IF rec.operation_type = 'U' THEN
             UPDATE Orders
             SET date_of_purchase = rec.old_date_of_purchase,
@@ -299,6 +309,7 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER TABLE product_order MODIFY id GENERATED BY DEFAULT AS IDENTITY';
     FOR rec IN logs
     LOOP
+        UPDATE product_order_logs SET display = 0 WHERE id = rec.id;
         IF rec.operation_type = 'U' THEN
             UPDATE product_order
             SET product_id = rec.old_product_id,
@@ -344,3 +355,24 @@ IS
         restore_data(SYSTIMESTAMP  - (INTERVAL '0.001' SECOND) * interval_millisecs);
     END restore_data;
 END restoration;
+
+
+CREATE OR REPLACE PROCEDURE print_stat(log_tab_name VARCHAR2)
+IS
+    TYPE arr IS VARRAY(3) 
+        OF VARCHAR2(1) NOT NULL;
+     types_arr arr := arr('I', 'U', 'D');
+    i_num NUMBER;
+BEGIN
+    FOR ind IN types_arr.FIRST..types_arr.LAST
+    LOOP
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || log_tab_name 
+            ||' WHERE display = 1 AND operation_type = ' || CHR(39) || types_arr(ind) || CHR(39) INTO i_num;
+        DBMS_OUTPUT.PUT_LINE(types_arr(ind) || ': 0');
+    END LOOP;
+END print_stat;
+
+BEGIN
+    print_stat('Products_logs');
+END;
+
