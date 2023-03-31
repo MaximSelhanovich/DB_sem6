@@ -1,0 +1,39 @@
+{
+    "DDL": {
+        "type": "create",
+        "tab_name": "TestTab",
+        "columns": [
+            {
+                "col_name": "id",
+                "data_type": "number",
+                "inline_constraints": ["PRIMARY KEY", "NOT NULL"]
+            },
+            {
+                "col_name": "name",
+                "data_type": "varchar2(100)",
+                "inline_constraints": ["NOT NULL"]
+            }
+        ],
+        "outline_constraints": [
+            {
+                "cons_name": "id_check",
+                "cons_type": "C",
+                "columns": ["id"],
+                "comparison": {
+                    "comparator": ">",
+                    "value": 0
+                    }
+            },
+            {
+                "cons_name": "REFAAA",
+                "cons_type": "R",
+                "columns": ["name"],  
+                "reference": {
+                    "comment": "/*only for FOREIGN KEY*/",
+                    "tab_name": "tabular",
+                    "columns": ["nama"]
+                }
+            }
+        ]
+    }
+}

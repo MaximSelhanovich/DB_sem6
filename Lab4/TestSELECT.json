@@ -1,0 +1,92 @@
+{
+    "select": {
+        "tables": [
+            {"tab_name": "all_procedures",
+            "columns": [
+                {"col_name": "owner", "alias": null},
+                {"col_name": "type", "alias": null}
+            ]}
+        ],
+        "from": [{"tab_name": "all_procedures", "alias": null}],
+        "where": {
+            "and": [
+                {"comparison": {
+                    "tab_name": "tab1",
+                    "col_name": "col_to_compare",
+                    "comparator": ">",
+                    "value": 5
+                    }
+                },
+                {"comparison": {
+                    "tab_name": "tab2",
+                    "col_name": "gsa",
+                    "comparator": "in",
+                    "value": {
+                        "select": {
+                            "tables": [
+                                {"tab_name": "tab1",
+                                "columns": [
+                                    {"col_name": "col1_name", "alias": "alias"},
+                                    {"col_name": "col1_name", "alias": "alias"}
+                                ]}
+                            ],
+                                "from": [{"tab_name": "all_procedures", "alias": null}],
+                                "where":{
+                                    "or": [
+                                        {"comparison": {
+                                            "tab_name": "tqbbb",
+                                            "col_name": "col_to_compare_in1",
+                                            "comparator": ">",
+                                            "value": 15
+                                            }
+                                        },
+                                        {"comparison": {
+                                            "tab_name": "dhst",
+                                            "col_name": "col_to_compare_in2",
+                                            "comparator": "<",
+                                            "value": 15
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }  
+                }
+            ]
+        },
+        "join": [
+            {"join_type": "inner",
+            "select": {
+                "tables": [
+                    {"tab_name": "IN_JOIN",
+                    "columns": [
+                        {"col_name": "ONE", "alias": null},
+                        {"col_name": "TWO", "alias": null}
+                    ]}
+                ],
+                "from": [{"tab_name": "IN_JOIN", "alias": null}]
+            },
+            "on": {
+                "comparison": {
+                        "tab_name": "tab1",
+                        "col_name": "col_to_compare",
+                        "comparator": "=",
+                        "value": {"tab_name": "tda", "col_name": "coclco"}
+                    }    
+                }
+            },
+            {"join_type": "full outer",
+            "table": {"tab_name": "tab1", "alias": "a"},
+            "on": {
+                "comparison": {
+                        "tab_name": "tab1",
+                        "col_name": "COMP",
+                        "comparator": "=",
+                        "value": {"tab_name": "tGSTRHETH", "col_name": "coclco"}
+                    }    
+                }
+            }
+        ]
+    }
+}
