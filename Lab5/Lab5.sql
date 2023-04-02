@@ -50,7 +50,7 @@ CREATE TABLE Customers_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
-    display NUMBER(1) DEFAULT 0,
+    display NUMBER(1) DEFAULT 1,
     customer_id NUMBER NOT NULL,
     old_name VARCHAR2(100),
     old_surname VARCHAR2(100),
@@ -63,7 +63,7 @@ CREATE TABLE Products_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
-    display NUMBER(1) DEFAULT 0,
+    display NUMBER(1) DEFAULT 1,
     product_id NUMBER NOT NULL,
     old_name VARCHAR2(100),
     old_price NUMBER(10, 2),
@@ -76,7 +76,7 @@ CREATE TABLE Orders_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
-    display NUMBER(1) DEFAULT 0,
+    display NUMBER(1) DEFAULT 1,
     order_id NUMBER NOT NULL,
     old_date_of_purchase TIMESTAMP,
     old_customer_id NUMBER,
@@ -89,7 +89,7 @@ CREATE TABLE product_order_logs
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
     change_time TIMESTAMP NOT NULL,
     operation_type VARCHAR2(1),
-    display NUMBER(1) DEFAULT 0,
+    display NUMBER(1) DEFAULT 1,
     product_order_id NUMBER NOT NULL,
     old_product_id NUMBER,
     old_order_id NUMBER,
@@ -357,22 +357,56 @@ IS
 END restoration;
 
 
-CREATE OR REPLACE PROCEDURE print_stat(log_tab_name VARCHAR2)
+CREATE OR REPLACE FUNCTION log_stat(log_tab_name VARCHAR2) RETURN VARCHAR2
 IS
     TYPE arr IS VARRAY(3) 
         OF VARCHAR2(1) NOT NULL;
      types_arr arr := arr('I', 'U', 'D');
     i_num NUMBER;
+    res_str VARCHAR2(500);
 BEGIN
+    res_str := HTF.TABLEOPEN || CHR(10) || HTF.TABLEROWOPEN 
+        || CHR(10) || HTF.TABLEHEADER(log_tab_name) 
+        || CHR(10) || HTF.TABLEROWCLOSE || CHR(10);
     FOR ind IN types_arr.FIRST..types_arr.LAST
     LOOP
         EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || log_tab_name 
             ||' WHERE display = 1 AND operation_type = ' || CHR(39) || types_arr(ind) || CHR(39) INTO i_num;
-        DBMS_OUTPUT.PUT_LINE(types_arr(ind) || ': 0');
+        res_str := res_str || HTF.TABLEROWOPEN
+            || CHR(10) || HTF.TABLEDATA(types_arr(ind)) 
+            || CHR(10) || HTF.TABLEDATA(i_num) 
+            || CHR(10) || HTF.TABLEROWCLOSE || CHR(10);
     END LOOP;
-END print_stat;
+    res_str := res_str || CHR(10) || HTF.TABLECLOSE;
+    RETURN res_str;
+END log_stat;
+
+
+CREATE OR REPLACE DIRECTORY DIR_TO_WRITE AS 'D:\Study\Third_Grade\6_sem\DB\LR\Lab5';
+CREATE OR REPLACE PROCEDURE create_report
+IS
+    w_file   UTL_FILE.file_type;
+    res_str VARCHAR2(500);
+    TYPE arr IS VARRAY(4) 
+        OF VARCHAR2(30) NOT NULL;
+    types_arr arr := arr('Customers_logs', 'Products_logs', 'Orders_logs', 'product_order_logs');
+BEGIN
+    w_file := UTL_FILE.fopen('DIR_TO_WRITE', 'report.html', 'W');
+    res_str := HTF.HTMLOPEN || CHR(10) || HTF.headopen || CHR(10) || HTF.title('Lab stat') 
+            || CHR(10) || HTF.headclose || CHR(10) ||HTF.bodyopen || CHR(10);
+    UTL_FILE.put_line (w_file, res_str); 
+    FOR ind IN types_arr.FIRST..types_arr.LAST
+    LOOP
+        UTL_FILE.put_line (w_file, CHR(10) || log_stat(types_arr(ind)));
+    END LOOP;
+    res_str := CHR(10) || HTF.bodyclose || CHR(10) || HTF.htmlclose;
+    UTL_FILE.put_line(w_file, res_str);
+    UTL_FILE.fclose(w_file);
+END create_report;
 
 BEGIN
-    print_stat('Products_logs');
+    restoration.restore_data(TO_TIMESTAMP('02-APR-23 07.56.46.491000000 PM','DD-MON-RR HH12.MI.SS.FF AM'));
+    create_report;
 END;
 
+--TO_TIMESTAMP('02-APR-23 07.23.12.098000000 PM','DD-MON-RR HH12.MI.SS.FF AM')
