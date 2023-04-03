@@ -6,7 +6,7 @@ DROP TABLE Customers_logs; /
 DROP TABLE Products_logs; /
 DROP TABLE Orders_logs; /
 DROP TABLE product_order_logs; /
-
+DROP TABLE Reports; /
 CREATE TABLE Customers
 (
     id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
@@ -97,7 +97,15 @@ CREATE TABLE product_order_logs
     new_product_id NUMBER,
     new_order_id NUMBER,
     new_quantity NUMBER
+); /
+
+CREATE TABLE Reports
+(
+    id NUMBER GENERATED ALWAYS as IDENTITY PRIMARY KEY,
+    report_date TIMESTAMP NOT NULL 
 );
+
+
 
 CREATE OR REPLACE TRIGGER log_customers_changes
 AFTER INSERT OR UPDATE OR DELETE
@@ -357,21 +365,27 @@ IS
 END restoration;
 
 
-CREATE OR REPLACE FUNCTION log_stat(log_tab_name VARCHAR2) RETURN VARCHAR2
+CREATE OR REPLACE FUNCTION log_stat(log_tab_name VARCHAR2, 
+                                    from_time TIMESTAMP DEFAULT NULL) RETURN VARCHAR2
 IS
     TYPE arr IS VARRAY(3) 
         OF VARCHAR2(1) NOT NULL;
      types_arr arr := arr('I', 'U', 'D');
     i_num NUMBER;
     res_str VARCHAR2(500);
+    from_str VARCHAR2(100) := NULL;
 BEGIN
+    IF from_time IS NOT NULL THEN
+        from_str := ' AND change_time >= ' || CHR(39) || from_time || CHR(39);
+    END IF;
     res_str := HTF.TABLEOPEN || CHR(10) || HTF.TABLEROWOPEN 
         || CHR(10) || HTF.TABLEHEADER(log_tab_name) 
         || CHR(10) || HTF.TABLEROWCLOSE || CHR(10);
     FOR ind IN types_arr.FIRST..types_arr.LAST
     LOOP
         EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || log_tab_name 
-            ||' WHERE display = 1 AND operation_type = ' || CHR(39) || types_arr(ind) || CHR(39) INTO i_num;
+            || ' WHERE display = 1 AND operation_type = ' || CHR(39) || types_arr(ind) || CHR(39) 
+            || from_str INTO i_num;
         res_str := res_str || HTF.TABLEROWOPEN
             || CHR(10) || HTF.TABLEDATA(types_arr(ind)) 
             || CHR(10) || HTF.TABLEDATA(i_num) 
@@ -383,26 +397,59 @@ END log_stat;
 
 
 CREATE OR REPLACE DIRECTORY DIR_TO_WRITE AS 'D:\Study\Third_Grade\6_sem\DB\LR\Lab5';
-CREATE OR REPLACE PROCEDURE create_report
+CREATE OR REPLACE PROCEDURE create_report(from_time TIMESTAMP DEFAULT NULL)
 IS
     w_file   UTL_FILE.file_type;
     res_str VARCHAR2(500);
     TYPE arr IS VARRAY(4) 
         OF VARCHAR2(30) NOT NULL;
     types_arr arr := arr('Customers_logs', 'Products_logs', 'Orders_logs', 'product_order_logs');
+    res_time TIMESTAMP := from_time;
 BEGIN
+    IF res_time IS NULL THEN
+        BEGIN
+            SELECT report_date INTO res_time FROM Reports 
+            WHERE id = (SELECT max(id) FROM Reports);
+        EXCEPTION WHEN NO_DATA_FOUND THEN res_time := NULL;
+        END;
+    END IF;
+    INSERT INTO Reports(report_date) VALUES (SYSTIMESTAMP);
     w_file := UTL_FILE.fopen('DIR_TO_WRITE', 'report.html', 'W');
     res_str := HTF.HTMLOPEN || CHR(10) || HTF.headopen || CHR(10) || HTF.title('Lab stat') 
             || CHR(10) || HTF.headclose || CHR(10) ||HTF.bodyopen || CHR(10);
     UTL_FILE.put_line (w_file, res_str); 
     FOR ind IN types_arr.FIRST..types_arr.LAST
     LOOP
-        UTL_FILE.put_line (w_file, CHR(10) || log_stat(types_arr(ind)));
+        UTL_FILE.put_line (w_file, CHR(10) || log_stat(types_arr(ind), res_time));
     END LOOP;
     res_str := CHR(10) || HTF.bodyclose || CHR(10) || HTF.htmlclose;
     UTL_FILE.put_line(w_file, res_str);
     UTL_FILE.fclose(w_file);
 END create_report;
+
+
+INSERT INTO Customers (name, surname) VALUES ('Max', 'Maximus'); /
+INSERT INTO Customers (name, surname) VALUES ('Chel', 'Chelomey'); /
+INSERT INTO Customers (name, surname) VALUES ('Pupa', 'Lupovich'); /
+
+INSERT INTO Products (name, price) VALUES ('Sword', 1.1); /
+INSERT INTO Products (name, price) VALUES ('Pelmen', 999.99); /
+INSERT INTO Products (name, price) VALUES ('Nothing', 123); /
+
+INSERT INTO Orders (date_of_purchase, customer_id) VALUES (SYSTIMESTAMP, 1); /
+INSERT INTO Orders (date_of_purchase, customer_id) VALUES (SYSTIMESTAMP, 2); /
+INSERT INTO Orders (date_of_purchase, customer_id) VALUES (SYSTIMESTAMP, 3); /
+
+INSERT INTO product_order (product_id, order_id, quantity) VALUES (1, 1, DEFAULT); /
+INSERT INTO product_order (product_id, order_id, quantity) VALUES (2, 2, 2); /
+INSERT INTO product_order (product_id, order_id, quantity) VALUES (3, 3, 4); /
+    
+    
+SELECT * FROM product_order;
+
+BEGIN
+    create_report('03-APR-23 01.32.37.536000000 PM');
+END;
 
 BEGIN
     restoration.restore_data(TO_TIMESTAMP('02-APR-23 07.56.46.491000000 PM','DD-MON-RR HH12.MI.SS.FF AM'));
