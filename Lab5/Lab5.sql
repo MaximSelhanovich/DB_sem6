@@ -350,10 +350,10 @@ IS
     PROCEDURE restore_data(time_to_restore TIMESTAMP)
     IS
     BEGIN
+        restore_product_order(time_to_restore);
+        restore_orders(time_to_restore);
         restore_customers(time_to_restore);
         restore_products(time_to_restore);
-        restore_orders(time_to_restore);
-        restore_product_order(time_to_restore);
     END restore_data;
     
     
@@ -443,12 +443,10 @@ INSERT INTO Orders (date_of_purchase, customer_id) VALUES (SYSTIMESTAMP, 3); /
 INSERT INTO product_order (product_id, order_id, quantity) VALUES (1, 1, DEFAULT); /
 INSERT INTO product_order (product_id, order_id, quantity) VALUES (2, 2, 2); /
 INSERT INTO product_order (product_id, order_id, quantity) VALUES (3, 3, 4); /
-    
-    
-SELECT * FROM product_order;
+
 
 BEGIN
-    create_report('03-APR-23 01.32.37.536000000 PM');
+    create_report;
 END;
 
 BEGIN
