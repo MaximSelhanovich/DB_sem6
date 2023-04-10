@@ -1,48 +1,46 @@
 {
     "select": {
         "tables": [
-            {"tab_name": "all_procedures",
+            {"tab_name": "tab_1",
             "columns": [
-                {"col_name": "owner", "alias": null},
-                {"col_name": "type", "alias": null}
+                {"col_name": "id", "alias": null},
+                {"col_name": "val_1", "alias": null}
             ]}
         ],
-        "from": [{"tab_name": "all_procedures", "alias": null}],
+        "from": [{"tab_name": "tab_1", "alias": null}],
         "where": {
-            "and": [
-                {"comparison": {
-                    "tab_name": "tab1",
-                    "col_name": "col_to_compare",
-                    "comparator": ">",
-                    "value": 5
-                    }
-                },
-                {"comparison": {
-                    "tab_name": "tab2",
-                    "col_name": "gsa",
+                "comparison": {
+                    "tab_name": "tab_1",
+                    "col_name": "id",
                     "comparator": "in",
                     "value": {
                         "select": {
                             "tables": [
-                                {"tab_name": "tab1",
+                                {"tab_name": "tab_2",
                                 "columns": [
-                                    {"col_name": "col1_name", "alias": "alias"},
-                                    {"col_name": "col1_name", "alias": "alias"}
+                                    {"col_name": "id", "alias": null}
                                 ]}
                             ],
-                                "from": [{"tab_name": "all_procedures", "alias": null}],
+                                "from": [{"tab_name": "tab_2", "alias": null}],
                                 "where":{
-                                    "or": [
+                                    "and": [
                                         {"comparison": {
-                                            "tab_name": "tqbbb",
-                                            "col_name": "col_to_compare_in1",
-                                            "comparator": ">",
-                                            "value": 15
+                                            "tab_name": "tab_2",
+                                            "col_name": "name",
+                                            "comparator": "like",
+                                            "value": "%Q%"
                                             }
                                         },
                                         {"comparison": {
-                                            "tab_name": "dhst",
-                                            "col_name": "col_to_compare_in2",
+                                            "tab_name": "tab_2",
+                                            "col_name": "val_2",
+                                            "comparator": ">",
+                                            "value": 10
+                                            }
+                                        },
+                                        {"comparison": {
+                                            "tab_name": "tab_2",
+                                            "col_name": "val_2",
                                             "comparator": "<",
                                             "value": 15
                                             }
@@ -53,40 +51,5 @@
                         }
                     }  
                 }
-            ]
-        },
-        "join": [
-            {"join_type": "inner",
-            "select": {
-                "tables": [
-                    {"tab_name": "IN_JOIN",
-                    "columns": [
-                        {"col_name": "ONE", "alias": null},
-                        {"col_name": "TWO", "alias": null}
-                    ]}
-                ],
-                "from": [{"tab_name": "IN_JOIN", "alias": null}]
-            },
-            "on": {
-                "comparison": {
-                        "tab_name": "tab1",
-                        "col_name": "col_to_compare",
-                        "comparator": "=",
-                        "value": {"tab_name": "tda", "col_name": "coclco"}
-                    }    
-                }
-            },
-            {"join_type": "full outer",
-            "table": {"tab_name": "tab1", "alias": "a"},
-            "on": {
-                "comparison": {
-                        "tab_name": "tab1",
-                        "col_name": "COMP",
-                        "comparator": "=",
-                        "value": {"tab_name": "tGSTRHETH", "col_name": "coclco"}
-                    }    
-                }
-            }
-        ]
-    }
+        }
 }

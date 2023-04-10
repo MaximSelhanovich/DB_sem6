@@ -427,6 +427,8 @@ BEGIN
     UTL_FILE.fclose(w_file);
 END create_report;
 
+SELECT * FROM Customers;
+
 
 INSERT INTO Customers (name, surname) VALUES ('Max', 'Maximus'); /
 INSERT INTO Customers (name, surname) VALUES ('Chel', 'Chelomey'); /
@@ -450,7 +452,7 @@ BEGIN
 END;
 
 BEGIN
-    restoration.restore_data(TO_TIMESTAMP('02-APR-23 07.56.46.491000000 PM','DD-MON-RR HH12.MI.SS.FF AM'));
+    restoration.restore_data(TO_TIMESTAMP('03-APR-23 09.13.22.600000000 PM','DD-MON-RR HH12.MI.SS.FF AM'));
     create_report;
 END;
 

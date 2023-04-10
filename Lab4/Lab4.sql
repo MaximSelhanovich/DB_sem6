@@ -568,6 +568,36 @@ END read_from_file;
 
 
 BEGIN
-    DBMS_OUTPUT.PUT_LINE(json_parser.parse_JSON_to_SQL(JSON_OBJECT_T(read_from_file('READ_DIR', 'TestDDL.json'))));
+    DBMS_OUTPUT.PUT_LINE(json_parser.parse_JSON_to_SQL(JSON_OBJECT_T(read_from_file('READ_DIR', 'TestSELECT.json'))));
 END;
+
+
+
+
+CREATE TABLE tab_1
+(
+    id NUMBER PRIMARY KEY,
+    name VARCHAR2(200),
+    val_1 NUMBER
+); /
+
+CREATE TABLE tab_2
+(
+    id NUMBER PRIMARY KEY,
+    name VARCHAR2(200),
+    val_2 NUMBER
+)
+
+
+SELECT tab_1.id , tab_1.val_1 
+FROM tab_1 
+WHERE tab_1.id IN 
+(
+SELECT tab_2.id 
+FROM tab_2 
+WHERE (tab_2.name LIKE '%Q%' AND tab_2.val_2 > 10 AND tab_2.val_2 < 15)
+)
+;
+
+
 
